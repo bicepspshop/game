@@ -1,5 +1,6 @@
 import { Vector2D } from "./physics"
 import { PathFinder } from "./path-finder"
+import { PolygonObstacle } from "./polygon-obstacle"
 
 export class Hole {
   constructor(
@@ -22,6 +23,7 @@ export interface LevelParams {
 
 export class LevelGenerator {
   private holes: Hole[] = []
+  private polygonObstacles: PolygonObstacle[] = [] // Новые полигональные препятствия
   private width: number
   private height: number
   private minX: number
@@ -32,6 +34,7 @@ export class LevelGenerator {
   private levelParameters: Map<number, LevelParams> = new Map() // Параметры для каждого уровня
   private ballRadius: number = 14 // Радиус шарика для проверки проходимости
   private pathFinder: PathFinder | null = null; // Для поиска пути и проверки проходимости
+  private usePolygonObstacles: boolean = false // Флаг для использования полигональных препятствий
 
   constructor(width: number, height: number, minX: number, maxX: number, holeRadius: number) {
     this.width = width
@@ -247,6 +250,7 @@ export class LevelGenerator {
   public generateLevel(level: number): number {
     // Очищаем существующие лунки и пути
     this.holes = []
+    this.polygonObstacles = []
     this.safePathNodes = []
     
     console.log(`Generating level ${level}`)
@@ -260,71 +264,23 @@ export class LevelGenerator {
     
     console.log(`Level ${level}: target=${params.numHoles} holes, gap=${params.gapWidth}px, target size=${params.targetHoleSize}`)
     
-    // Используем шаблоны из оригинального аркадного автомата
-    const applicableTemplates = this.levelTemplates.filter(
-      template => level >= template.minLevel && level <= template.maxLevel
-    );
+    // Определяем, используем ли полигональные препятствия
+    // Начинаем использовать их с 4 уровня
+    this.usePolygonObstacles = level >= 4;
     
-    // Выбираем один или два подходящих шаблона
-    let selectedTemplates = [];
-    if (applicableTemplates.length > 0) {
-      // Для низких уровней используем только один шаблон
-      if (level <= 5) {
-        selectedTemplates = [applicableTemplates[0]];
-      } else {
-        // Для более высоких уровней можем комбинировать шаблоны
-        // Сортируем по уровню сложности и берем наиболее подходящие
-        applicableTemplates.sort((a, b) => a.minLevel - b.minLevel);
-        
-        // Для некоторых уровней берем два шаблона
-        if (level > 15) {
-          // Берем до двух подходящих шаблонов
-          selectedTemplates = applicableTemplates.slice(-2);
-        } else {
-          // Берем один наиболее подходящий
-          selectedTemplates = [applicableTemplates[applicableTemplates.length - 1]];
-        }
-      }
+    // Сначала создаем целевую лунку
+    const targetHole = this.createTargetHole(level, params.numHoles);
+    this.holes.push(targetHole);
+    
+    // Создаем барьер вокруг целевой лунки с уровня 4
+    if (level > 3) {
+      this.createProtectiveBarrier(targetHole, level, grayHoleRadius, params.barrierCount);
     }
     
-    // Если нет подходящих шаблонов, используем обычную генерацию
-    if (selectedTemplates.length === 0) {
-      // Сначала создаем целевую лунку
-      const targetHole = this.createTargetHole(level, params.numHoles);
-      this.holes.push(targetHole);
-      
-      // Создаем барьер вокруг целевой лунки с уровня 4
-      if (level > 3) {
-        this.createProtectiveBarrier(targetHole, level, grayHoleRadius, params.barrierCount);
-      }
-      
-      // Добавляем шаблонные препятствия в зависимости от уровня
-      this.addPatternedObstacles(level, grayHoleRadius, params);
-    } else {
-      // Используем выбранные шаблоны из оригинальной игры
-      const mainTemplate = selectedTemplates[0];
-      
-      // Создаем целевую лунку на основе шаблона
-      const targetPosition = mainTemplate.getTargetPosition(this.width, this.height);
-      const targetHole = new Hole(targetPosition, this.targetHoleRadius, true);
-      this.holes.push(targetHole);
-      
-      // Генерируем отверстия для каждого выбранного шаблона
-      for (const template of selectedTemplates) {
-        const holePositions = template.generateHoles(this.width, this.height, level, this.holeRadius);
-        
-        // Преобразуем позиции в отверстия
-        for (const position of holePositions) {
-          // Проверяем достаточность расстояния от целевой лунки
-          const distToTarget = Vector2D.distance(position, targetHole.position);
-          if (distToTarget > this.targetHoleRadius * 2.5) {
-            this.holes.push(new Hole(position, grayHoleRadius, false));
-          }
-        }
-      }
-    }
+    // Добавляем шаблонные препятствия в зависимости от уровня
+    this.addPatternedObstacles(level, grayHoleRadius, params);
     
-    // Добавляем оставшиеся случайные лунки для заполнения до нужного количества
+    // Добавляем случайные лунки для заполнения до нужного количества
     this.addRandomObstacles(level, grayHoleRadius, params);
     
     // Проверяем проходимость уровня с использованием PathFinder
@@ -337,7 +293,7 @@ export class LevelGenerator {
       this.removeBlockingObstacles(startPosition, this.holes[0].position, params.gapWidth);
     }
 
-    console.log(`Generated ${this.holes.length} holes for level ${level}`);
+    console.log(`Generated ${this.holes.length} holes and ${this.polygonObstacles.length} polygon obstacles for level ${level}`);
     
     // Возвращаем индекс целевой лунки (всегда 0, т.к. она добавляется первой)
     return 0;
@@ -416,6 +372,17 @@ export class LevelGenerator {
       const reductionFactor = Math.min(0.15, (level - 15) * 0.01);
       targetRadius *= (1 - reductionFactor);
     }
+    
+    // Если используем полигоны и уровень выше определенного значения, создаем полигональную целевую лунку
+    if (this.usePolygonObstacles && level > 8) {
+      // Создаем полигональную целевую лунку
+      const targetPosition = new Vector2D(x, y);
+      const targetObstacle = PolygonObstacle.createShape(targetPosition, 'circle', targetRadius, true);
+      this.polygonObstacles.push(targetObstacle);
+      
+      // Мы все равно возвращаем фиктивную круглую лунку для совместимости
+      return new Hole(targetPosition, 0.1, true);
+    }
 
     return new Hole(new Vector2D(x, y), targetRadius, true);
   }
@@ -442,11 +409,22 @@ export class LevelGenerator {
       // Вычисляем позицию
       const x = targetHole.position.x + Math.cos(randomAngle) * barrierRadius
       const y = targetHole.position.y + Math.sin(randomAngle) * barrierRadius
+      const position = new Vector2D(x, y);
 
       // Проверяем, что лунка находится в пределах игрового поля
       if (x >= this.minX && x <= this.maxX && y >= this.height * 0.1 && y <= this.height * 0.8) {
-        const hole = new Hole(new Vector2D(x, y), holeRadius * 0.9, false) // Немного меньше обычных лунок
-        this.holes.push(hole)
+        // Используем полигональные препятствия с уровня 5 и с вероятностью 70%
+        if (this.usePolygonObstacles && level >= 5 && Math.random() < 0.7) {
+          // Создаем полигональное препятствие
+          const shapeTypes = ['triangle', 'square', 'diamond', 'trapezoid', 'hexagon', 'blob'];
+          const randomType = shapeTypes[Math.floor(Math.random() * shapeTypes.length)];
+          const obstacle = PolygonObstacle.createShape(position, randomType, holeRadius * 0.9, false);
+          this.polygonObstacles.push(obstacle);
+        } else {
+          // Создаем обычную круглую лунку
+          const hole = new Hole(position, holeRadius * 0.9, false);
+          this.holes.push(hole);
+        }
       }
     }
 
@@ -464,10 +442,20 @@ export class LevelGenerator {
 
         const x = targetHole.position.x + Math.cos(randomAngle) * outerBarrierRadius
         const y = targetHole.position.y + Math.sin(randomAngle) * outerBarrierRadius
+        const position = new Vector2D(x, y);
 
         if (x >= this.minX && x <= this.maxX && y >= this.height * 0.1 && y <= this.height * 0.8) {
-          const hole = new Hole(new Vector2D(x, y), holeRadius * 0.85, false)
-          this.holes.push(hole)
+          // Используем полигональные препятствия с вероятностью 85% на высоких уровнях
+          if (this.usePolygonObstacles && Math.random() < 0.85) {
+            // Предпочитаем более сложные формы для внешнего барьера
+            const shapeTypes = ['trapezoid', 'hexagon', 'blob'];
+            const randomType = shapeTypes[Math.floor(Math.random() * shapeTypes.length)];
+            const obstacle = PolygonObstacle.createShape(position, randomType, holeRadius * 0.85, false);
+            this.polygonObstacles.push(obstacle);
+          } else {
+            const hole = new Hole(position, holeRadius * 0.85, false);
+            this.holes.push(hole);
+          }
         }
       }
     }
@@ -522,12 +510,12 @@ export class LevelGenerator {
     // Создаем два ряда со смещением в шахматном порядке
     for (let i = 0; i < numInRow; i += 2) {
       const x = this.minX + spacing + i * spacing
-      this.addHoleIfValid(new Vector2D(x, centerY - yOffset), holeRadius, false, params)
+      this.addObstacleIfValid(new Vector2D(x, centerY - yOffset), holeRadius, false, params)
     }
     
     for (let i = 1; i < numInRow; i += 2) {
       const x = this.minX + spacing + i * spacing
-      this.addHoleIfValid(new Vector2D(x, centerY + yOffset), holeRadius, false, params)
+      this.addObstacleIfValid(new Vector2D(x, centerY + yOffset), holeRadius, false, params)
     }
   }
   
@@ -541,11 +529,11 @@ export class LevelGenerator {
       // Создаем симметричные лунки в верхнем и нижнем ряду, но со смещением
       // Верхний ряд
       if (i % 2 === 0) {
-        this.addHoleIfValid(new Vector2D(x, topY), holeRadius, false, params)
+        this.addObstacleIfValid(new Vector2D(x, topY), holeRadius, false, params)
       }
       // Нижний ряд
       if (i % 2 === 1) {
-        this.addHoleIfValid(new Vector2D(x, bottomY), holeRadius, false, params)
+        this.addObstacleIfValid(new Vector2D(x, bottomY), holeRadius, false, params)
       }
     }
   }
@@ -561,7 +549,7 @@ export class LevelGenerator {
     for (let i = 0; i < numPoints; i++) {
       const x = this.minX + i * xStep
       const y = midY + amplitude * Math.sin(i * Math.PI)
-      this.addHoleIfValid(new Vector2D(x, y), holeRadius, false, params)
+      this.addObstacleIfValid(new Vector2D(x, y), holeRadius, false, params)
     }
   }
   
@@ -577,7 +565,7 @@ export class LevelGenerator {
       const angle = (i / numHoles) * Math.PI * 2
       const x = centerX + Math.cos(angle) * radius
       const y = centerY + Math.sin(angle) * radius
-      this.addHoleIfValid(new Vector2D(x, y), holeRadius, false, params)
+      this.addObstacleIfValid(new Vector2D(x, y), holeRadius, false, params)
     }
   }
   
@@ -589,14 +577,14 @@ export class LevelGenerator {
     // Создаем лунки слева от ворот
     let x = this.minX + holeRadius * 2
     while (x < centerX - gateWidth / 2) {
-      this.addHoleIfValid(new Vector2D(x, gateY), holeRadius, false, params)
+      this.addObstacleIfValid(new Vector2D(x, gateY), holeRadius, false, params)
       x += holeRadius * 3
     }
     
     // Создаем лунки справа от ворот
     x = centerX + gateWidth / 2
     while (x < this.maxX - holeRadius * 2) {
-      this.addHoleIfValid(new Vector2D(x, gateY), holeRadius, false, params)
+      this.addObstacleIfValid(new Vector2D(x, gateY), holeRadius, false, params)
       x += holeRadius * 3
     }
   }
@@ -611,7 +599,7 @@ export class LevelGenerator {
     for (let i = 0; i < numPoints; i++) {
       const y = startY + i * stepY
       const offsetX = Math.sin(i * Math.PI / 2) * this.width * 0.3
-      this.addHoleIfValid(new Vector2D(centerX + offsetX, y), holeRadius, false, params)
+      this.addObstacleIfValid(new Vector2D(centerX + offsetX, y), holeRadius, false, params)
     }
   }
   
@@ -627,7 +615,17 @@ export class LevelGenerator {
       const radius = (i / numPoints) * maxRadius
       const x = centerX + Math.cos(angle) * radius
       const y = centerY + Math.sin(angle) * radius
-      this.addHoleIfValid(new Vector2D(x, y), holeRadius, false, params)
+      this.addObstacleIfValid(new Vector2D(x, y), holeRadius, false, params)
+    }
+  }
+  
+  // Общий метод для добавления препятствий (круглых или полигональных)
+  private addObstacleIfValid(position: Vector2D, radius: number, isTarget: boolean, params: LevelParams): boolean {
+    // Используем полигональные препятствия с вероятностью 70% если включен соответствующий режим
+    if (this.usePolygonObstacles && Math.random() < 0.7) {
+      return this.addPolygonObstacleIfValid(position, radius, isTarget, params);
+    } else {
+      return this.addHoleIfValid(position, radius, isTarget, params);
     }
   }
   
@@ -635,13 +633,14 @@ export class LevelGenerator {
   private addRandomObstacles(level: number, holeRadius: number, params: LevelParams): void {
     // Определяем, сколько еще лунок надо добавить
     const targetCount = params.numHoles;
-    const remainingHoles = Math.max(0, targetCount - this.holes.length);
+    const totalObstaclesCount = this.holes.length + this.polygonObstacles.length;
+    const remainingHoles = Math.max(0, targetCount - totalObstaclesCount);
     let attempts = 0;
     const maxAttempts = 1000;
     
     console.log(`Adding ${remainingHoles} random obstacles`);
     
-    while (this.holes.length < targetCount && attempts < maxAttempts) {
+    while ((this.holes.length + this.polygonObstacles.length) < targetCount && attempts < maxAttempts) {
       attempts++;
       
       // Генерируем случайную позицию
@@ -656,7 +655,14 @@ export class LevelGenerator {
         y = this.height * 0.1 + Math.random() * (this.height * 0.7);
       }
       
-      this.addHoleIfValid(new Vector2D(x, y), holeRadius, false, params);
+      const position = new Vector2D(x, y);
+      
+      // Если используем полигональные препятствия, то с вероятностью 70% создаём полигон
+      if (this.usePolygonObstacles && Math.random() < 0.7) {
+        this.addPolygonObstacleIfValid(position, holeRadius, false, params);
+      } else {
+        this.addHoleIfValid(position, holeRadius, false, params);
+      }
     }
   }
   
@@ -678,9 +684,71 @@ export class LevelGenerator {
       }
     }
     
+    // Проверяем расстояние до полигональных препятствий
+    for (const obstacle of this.polygonObstacles) {
+      const distance = Vector2D.distance(position, obstacle.position);
+      const minDistance = obstacle.isTarget
+        ? obstacle.boundingRadius + radius + 10
+        : params.minDistanceBetweenHoles;
+        
+      if (distance < minDistance) {
+        return false;
+      }
+    }
+    
     // Создаем новую лунку
     const hole = new Hole(position, radius, isTarget);
     this.holes.push(hole);
+    return true;
+  }
+  
+  // Добавление полигонального препятствия, если оно не перекрывается с существующими
+  private addPolygonObstacleIfValid(position: Vector2D, radius: number, isTarget: boolean, params: LevelParams): boolean {
+    if (position.x < this.minX || position.x > this.maxX || position.y < this.height * 0.05 || position.y > this.height * 0.9) {
+      return false;
+    }
+    
+    // Проверяем расстояние до лунок
+    for (const hole of this.holes) {
+      const distance = Vector2D.distance(position, hole.position);
+      const minDistance = hole.isTarget
+        ? this.targetHoleRadius + radius + 15 // Дополнительный отступ от целевой лунки
+        : params.minDistanceBetweenHoles;
+        
+      if (distance < minDistance) {
+        return false;
+      }
+    }
+    
+    // Проверяем расстояние до других полигональных препятствий
+    for (const obstacle of this.polygonObstacles) {
+      const distance = Vector2D.distance(position, obstacle.position);
+      const minDistance = obstacle.isTarget
+        ? obstacle.boundingRadius + radius + 15
+        : params.minDistanceBetweenHoles;
+        
+      if (distance < minDistance) {
+        return false;
+      }
+    }
+    
+    // Создаем новое полигональное препятствие случайной формы
+    let obstacle;
+    
+    if (isTarget) {
+      // Целевые отверстия всегда круглые для удобства
+      obstacle = PolygonObstacle.createShape(position, 'circle', radius * 0.7, true);
+    } else {
+      // Выбираем случайную форму для обычных препятствий
+      const shapeTypes = ['triangle', 'square', 'diamond', 'trapezoid', 'hexagon', 'blob'];
+      const randomType = shapeTypes[Math.floor(Math.random() * shapeTypes.length)];
+      
+      // Создаем препятствие случайной формы с небольшими вариациями размера
+      const size = radius * (0.9 + Math.random() * 0.4);
+      obstacle = PolygonObstacle.createShape(position, randomType, size, false);
+    }
+    
+    this.polygonObstacles.push(obstacle);
     return true;
   }
   
@@ -689,12 +757,25 @@ export class LevelGenerator {
     console.log(`Checking level solvability with minPathWidth=${minPathWidth}px...`);
     if (!this.pathFinder) return false;
     
-    // Преобразуем лунки в препятствия для PathFinder
-    const obstacles = this.holes.map(hole => ({
-      position: hole.position,
-      radius: hole.radius,
-      isTarget: hole.isTarget
-    }));
+    // Преобразуем все препятствия (и круглые и полигональные) в препятствия для PathFinder
+    const obstacles: {position: Vector2D, radius: number, isTarget: boolean}[] = [
+      ...this.holes.map(hole => ({
+        position: hole.position,
+        radius: hole.radius,
+        isTarget: hole.isTarget
+      }))
+    ];
+    
+    // Добавляем полигональные препятствия
+    if (this.usePolygonObstacles) {
+      for (const poly of this.polygonObstacles) {
+        obstacles.push({
+          position: poly.position,
+          radius: poly.boundingRadius, // Используем ограничивающий радиус для проверки столкновений
+          isTarget: poly.isTarget
+        });
+      }
+    }
     
     // Обновляем сетку проходимости
     this.pathFinder.updateGrid(obstacles);
@@ -722,22 +803,51 @@ export class LevelGenerator {
     console.log("Removing blocking obstacles to ensure level solvability...");
     if (!this.pathFinder) return;
     
-    // Преобразуем лунки в препятствия для PathFinder
-    const obstacles = this.holes.map(hole => ({
-      position: hole.position,
-      radius: hole.radius,
-      isTarget: hole.isTarget
-    }));
+    // Преобразуем все препятствия (и круглые и полигональные) в препятствия для PathFinder
+    const obstacles: {position: Vector2D, radius: number, isTarget: boolean}[] = [
+      ...this.holes.map(hole => ({
+        position: hole.position,
+        radius: hole.radius,
+        isTarget: hole.isTarget
+      }))
+    ];
+    
+    // Добавляем полигональные препятствия
+    if (this.usePolygonObstacles) {
+      for (const poly of this.polygonObstacles) {
+        obstacles.push({
+          position: poly.position,
+          radius: poly.boundingRadius, // Используем ограничивающий радиус для проверки столкновений
+          isTarget: poly.isTarget
+        });
+      }
+    }
     
     // Создаем безопасный путь, удаляя блокирующие препятствия
     const safeObstacles = this.pathFinder.createSafePath(start, target, this.ballRadius, obstacles);
     
-    // Обновляем список лунок
-    this.holes = safeObstacles.map(o => new Hole(o.position, o.radius, o.isTarget || false, false));
+    // Вычисляем, какие препятствия были удалены
+    const removedPositions = obstacles
+      .filter(o => !o.isTarget) // Не учитываем целевые лунки
+      .filter(o => !safeObstacles.some(s => s.position.x === o.position.x && s.position.y === o.position.y))
+      .map(o => o.position);
     
-    console.log(`Removed ${obstacles.length - safeObstacles.length} blocking obstacles to create safe path`);
+    // Удаляем эти препятствия из обоих списков
+    this.holes = this.holes.filter(hole => 
+      hole.isTarget || !removedPositions.some(pos => 
+        pos.x === hole.position.x && pos.y === hole.position.y
+      )
+    );
     
-    // Находим и сохраняем новый безопасный путь
+    this.polygonObstacles = this.polygonObstacles.filter(poly => 
+      poly.isTarget || !removedPositions.some(pos => 
+        pos.x === poly.position.x && pos.y === poly.position.y
+      )
+    );
+    
+    console.log(`Removed ${removedPositions.length} blocking obstacles to create safe path`);
+    
+    // Обновляем сетку и находим новый безопасный путь
     this.pathFinder.updateGrid(safeObstacles);
     const path = this.pathFinder.findPath(start, target);
     if (path) {
@@ -747,31 +857,61 @@ export class LevelGenerator {
   
   // Получение информации о всех лунках
   public getHoles(): { position: Vector2D; radius: number; isTarget: boolean }[] {
-    return this.holes.map(hole => ({
+    const result = this.holes.map(hole => ({
       position: hole.position,
       radius: hole.radius,
       isTarget: hole.isTarget
     }));
+    
+    // Добавляем информацию о полигональных препятствиях
+    if (this.usePolygonObstacles) {
+      this.polygonObstacles.forEach(obstacle => {
+        result.push({
+          position: obstacle.position,
+          radius: obstacle.radius,
+          isTarget: obstacle.isTarget
+        });
+      });
+    }
+    
+    return result;
   }
   
   // Проверка столкновения шарика с лунками
   public checkBallCollision(ballPosition: Vector2D, ballRadius: number): number | null {
-    // Check for collisions with all holes
+    // Проверяем столкновения со всеми лунками
     for (let i = 0; i < this.holes.length; i++) {
-      const hole = this.holes[i]
-      const distance = Vector2D.distance(ballPosition, hole.position)
+      const hole = this.holes[i];
+      const distance = Vector2D.distance(ballPosition, hole.position);
 
-      // Используем разные пороги для обычных и целевых лунок
+      // Разные пороги для обычных и целевых лунок
       const collisionThreshold = hole.isTarget
         ? hole.radius * 1.1  // Для зеленой лунки делаем больше область взаимодействия
-        : hole.radius - ballRadius * 0.3 // А для серых лунок шарик должен быть преимущественно внутри
+        : hole.radius - ballRadius * 0.3; // Для серых лунок шарик должен быть преимущественно внутри
 
       if (distance < collisionThreshold) {
-        return i
+        return i;
+      }
+    }
+    
+    // Проверяем столкновения с полигональными препятствиями
+    if (this.usePolygonObstacles) {
+      for (let i = 0; i < this.polygonObstacles.length; i++) {
+        const obstacle = this.polygonObstacles[i];
+        
+        // Если это целевое отверстие (зеленое) и шарик внутри него
+        if (obstacle.isTarget && obstacle.containsPoint(ballPosition)) {
+          return this.holes.length + i;
+        }
+        
+        // Если это обычное препятствие (серое) и шарик пересекается с ним
+        if (!obstacle.isTarget && obstacle.intersectsCircle(ballPosition, ballRadius * 0.7)) {
+          return this.holes.length + i;
+        }
       }
     }
 
-    return null
+    return null;
   }
 
   // Рендеринг лунок и безопасного пути (для отладки)
@@ -793,7 +933,16 @@ export class LevelGenerator {
       ctx.stroke()
     }
     
-    // Сначала рисуем обычные лунки
+    // Сначала рисуем обычные полигональные препятствия
+    if (this.usePolygonObstacles) {
+      for (const obstacle of this.polygonObstacles) {
+        if (!obstacle.isTarget) {
+          obstacle.render(ctx);
+        }
+      }
+    }
+    
+    // Затем рисуем обычные круглые лунки
     for (const hole of this.holes) {
       if (!hole.isTarget) {
         ctx.fillStyle = "#4b5563"
@@ -803,7 +952,16 @@ export class LevelGenerator {
       }
     }
 
-    // Затем рисуем целевую лунку поверх остальных
+    // Затем рисуем полигональные целевые лунки
+    if (this.usePolygonObstacles) {
+      for (const obstacle of this.polygonObstacles) {
+        if (obstacle.isTarget) {
+          obstacle.render(ctx);
+        }
+      }
+    }
+    
+    // Затем рисуем обычные целевые лунки
     for (const hole of this.holes) {
       if (hole.isTarget) {
         // Рисуем подсветку для целевой лунки
