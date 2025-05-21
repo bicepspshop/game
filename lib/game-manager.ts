@@ -1,7 +1,6 @@
 import { Vector2D, type Body, Physics } from "./physics"
 import { LevelGenerator } from "./level-generator"
-import { EndlessGenerator } from "./endless-generator"
-import { EndlessMode } from "./endless-mode" // Импортируем новый класс
+import { EndlessMode } from "./endless-mode" // Импортируем класс EndlessMode
 
 type GameCallbacks = {
   onScoreChange: (score: number) => void
@@ -15,8 +14,7 @@ export class GameManager {
   private ctx: CanvasRenderingContext2D
   private physics: Physics
   private levelGenerator: LevelGenerator
-  private endlessGenerator: EndlessGenerator | null = null
-  private endlessMode: EndlessMode | null = null // Новое свойство для EndlessMode
+  private endlessMode: EndlessMode | null = null
   private board: Body
   private ball: Body | null = null
   private leftPivot: Vector2D
@@ -37,9 +35,6 @@ export class GameManager {
   private ballRadius = 10
   private holeRadius = 18 // Базовый размер лунок
   private isEndlessMode: boolean
-  private scrollSpeed = 0
-  private maxScrollSpeed = 15 // Максимальная скорость прокрутки в пикселях за секунду
-  private scrollAcceleration = 0.2 // Ускорение прокрутки
   private viewportOffset = 0 // Смещение видимой области в бесконечном режиме
 
   constructor(canvas: HTMLCanvasElement, callbacks: GameCallbacks, startLevel = 1, isEndlessMode = false) {
@@ -87,18 +82,8 @@ export class GameManager {
 
     // Initialize endless mode if needed
     if (isEndlessMode) {
-      // Используем новый класс EndlessMode вместо EndlessGenerator
+      // Используем класс EndlessMode
       this.endlessMode = new EndlessMode(canvas.width, canvas.height, this.holeRadius)
-      
-      // Для совместимости - старый генератор пока сохраняем
-      this.endlessGenerator = new EndlessGenerator(
-        canvas.width,
-        canvas.height,
-        canvas.width * 0.1,
-        canvas.width * 0.9,
-        this.holeRadius,
-      )
-      this.endlessGenerator.generateInitialSegment()
     }
 
     // Generate first level or endless segment
@@ -164,7 +149,6 @@ export class GameManager {
     this.level = 1
     this.meters = 0
     this.viewportOffset = 0
-    this.scrollSpeed = 0
     this.gameActive = true
 
     // Обновляем UI
@@ -177,15 +161,9 @@ export class GameManager {
 
     // Сбрасываем бесконечный режим
     if (this.isEndlessMode) {
-      // Используем новый класс EndlessMode
+      // Используем класс EndlessMode
       if (this.endlessMode) {
         this.endlessMode.reset()
-      }
-      
-      // Для совместимости - сбрасываем и старый генератор
-      if (this.endlessGenerator) {
-        this.endlessGenerator.reset()
-        this.endlessGenerator.generateInitialSegment()
       }
     }
 
@@ -289,37 +267,10 @@ export class GameManager {
         this.score = Math.floor(this.meters);
         this.callbacks.onScoreChange(this.score);
       }
-      
-      // Для совместимости обновляем и старый генератор
-      if (this.endlessGenerator) {
-        this.endlessGenerator.updateSegments(this.viewportOffset, this.canvas.height)
-      }
-    } else {
-      // В обычном режиме просто увеличиваем скорость прокрутки со временем
-      if (this.isEndlessMode) {
-        this.scrollSpeed = Math.min(this.scrollSpeed + this.scrollAcceleration * deltaTime, this.maxScrollSpeed)
-        this.viewportOffset += this.scrollSpeed * deltaTime
-        
-        // Обновляем метры (1 метр = 10 пикселей)
-        const newMeters = Math.floor(this.viewportOffset / 10)
-        if (newMeters !== this.meters) {
-          this.meters = newMeters
-          this.callbacks.onMetersChange(this.meters)
-          
-          // Начисляем очки за высоту
-          this.score = this.meters
-          this.callbacks.onScoreChange(this.score)
-        }
-      }
     }
 
     // Проверяем шарик
     if (this.ball) {
-      // В бесконечном режиме нужно двигать мяч вместе с экраном (только для старого режима)
-      if (this.isEndlessMode && !this.endlessMode) {
-        this.ball.position.y += this.scrollSpeed * deltaTime;
-      }
-      
       // Проверка выпадения шарика с доски
       if (this.isBallOffBoard()) {
         this.handleGameOver()
@@ -333,9 +284,6 @@ export class GameManager {
           this.handleGameOver()
           return
         }
-        
-        // Для совместимости проверяем и через старый метод
-        this.checkEndlessModeCollisions(deltaTime)
       } else {
         this.checkNormalModeCollisions(deltaTime)
       }
@@ -387,27 +335,7 @@ export class GameManager {
     }
   }
 
-  private checkEndlessModeCollisions(deltaTime: number): void {
-    if (!this.ball || !this.endlessGenerator) return
 
-    // В бесконечном режиме проверяем только столкновения с препятствиями
-    const ballSpeed = this.ball.velocity.length()
-    const numChecks = Math.max(1, Math.min(5, Math.floor(ballSpeed / 100)))
-
-    for (let i = 0; i < numChecks; i++) {
-      const t = i / numChecks
-      const interpolatedPosition = new Vector2D(
-        this.ball.position.x - this.ball.velocity.x * deltaTime * t,
-        this.ball.position.y - this.ball.velocity.y * deltaTime * t,
-      )
-
-      // Проверяем столкновение с препятствиями
-      if (this.endlessGenerator.checkObstacleCollision(interpolatedPosition, this.ballRadius, this.viewportOffset)) {
-        this.handleGameOver()
-        return
-      }
-    }
-  }
 
   // Check if the ball has completely fallen off the board
   private isBallOffBoard(): boolean {
@@ -457,9 +385,6 @@ export class GameManager {
       // Используем новый класс EndlessMode для отрисовки
       if (this.endlessMode) {
         this.endlessMode.render(ctx)
-      } else if (this.endlessGenerator) {
-        // Для совместимости - используем старый генератор, если новый недоступен
-        this.endlessGenerator.render(ctx, this.viewportOffset)
       }
     } else {
       // В обычном режиме отрисовываем лунки через levelGenerator
@@ -513,8 +438,8 @@ export class GameManager {
 
     // Generate new level or endless segment
     if (this.isEndlessMode) {
-      // В бесконечном режиме используем новый класс
-      // Но генерация начальных платформ уже выполнена в конструкторе
+      // В бесконечном режиме используем класс EndlessMode
+      // Генерация начальных платформ уже выполнена в конструкторе
     } else {
       // В обычном режиме генерируем новый уровень
       this.targetHole = this.levelGenerator.generateLevel(this.level)

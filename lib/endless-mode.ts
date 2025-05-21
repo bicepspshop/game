@@ -111,13 +111,34 @@ export class EndlessMode {
 
   // Создание ряда платформ на определенной высоте
   private spawnPlatformRow(y: number): void {
-    // Вычисляем количество платформ в ряду на основе плотности - меньше платформ
-    const maxPlatformsInRow = Math.floor(this.viewportWidth / (this.platformRadius * 5)); // Увеличен делитель с 4 до 5
-    const platformsToCreate = Math.max(1, Math.floor(maxPlatformsInRow * this.platformDensity * Math.random()));
+    // Вычисляем расстояние от земли в метрах для определения сложности
+    const heightInMeters = Math.max(0, this.viewportOffset - y) / this.pixelsPerMeter;
     
-    // Создаем безопасный проход (минимум 2.5 диаметра шарика)
-    const safePathWidth = this.platformRadius * 5;
-    const safePathX = this.minX + Math.random() * (this.viewportWidth - this.minX * 2 - safePathWidth);
+    // Увеличиваем плотность платформ с высотой (до максимума 0.7)
+    const currentDensity = Math.min(0.7, this.platformDensity + (heightInMeters / 100) * 0.3);
+    
+    // Уменьшаем размер безопасного пути с высотой (минимум 2.5 диаметра шарика)
+    const safePathWidthMultiplier = Math.max(2.5, 5.0 - (heightInMeters / 50) * 2.5);
+    const safePathWidth = this.platformRadius * safePathWidthMultiplier;
+
+    // Вычисляем количество платформ в ряду на основе плотности и высоты
+    const maxPlatformsInRow = Math.floor(this.viewportWidth / (this.platformRadius * 5)); 
+    // С высотой увеличиваем минимальное количество платформ
+    const minPlatforms = Math.min(maxPlatformsInRow - 2, 1 + Math.floor(heightInMeters / 20));
+    const platformsToCreate = Math.max(minPlatforms, Math.floor(maxPlatformsInRow * currentDensity * Math.random()));
+    
+    // Создаем безопасный проход - с высотой становится все более рандомным
+    const randomOffset = heightInMeters > 30 ? (Math.random() * 0.5) * this.viewportWidth : 0;
+    const safePathX = this.minX + randomOffset + Math.random() * (this.viewportWidth - this.minX * 2 - safePathWidth - randomOffset);
+    
+    // Выбираем цвет платформ в зависимости от высоты (темнее на больших высотах)
+    let platformColor = "#4b5563"; // Базовый серый
+    if (heightInMeters > 50) {
+      platformColor = "#374151"; // Более темный серый
+    }
+    if (heightInMeters > 100) {
+      platformColor = "#1f2937"; // Еще темнее
+    }
     
     // Создаем платформы, избегая безопасный проход
     for (let i = 0; i < platformsToCreate; i++) {
@@ -126,21 +147,35 @@ export class EndlessMode {
       let attempts = 0;
       const maxAttempts = 10; // Ограничиваем количество попыток
       
+      // На больших высотах иногда размещаем платформы в безопасном проходе
+      const allowInSafePath = heightInMeters > 30 && Math.random() < (heightInMeters / 200);
+      
       // Пробуем разместить платформу вне безопасного прохода
       do {
         x = this.minX + Math.random() * (this.maxX - this.minX);
         isInSafePath = x >= safePathX && x <= safePathX + safePathWidth;
+        // Если allowInSafePath и шанс небольшой, то можем разместить в проходе
+        if (isInSafePath && allowInSafePath && Math.random() < 0.3) {
+          isInSafePath = false; // Прерываем цикл
+          break;
+        }
         attempts++;
       } while (isInSafePath && attempts < maxAttempts);
       
       // Если не удалось разместить вне пути после maxAttempts попыток, пропускаем
       if (isInSafePath) continue;
       
-      // Добавляем небольшую вариацию размера платформ
-      const radius = this.platformRadius * (0.85 + Math.random() * 0.3);
+      // Добавляем больше вариаций размера платформ с высотой
+      // Добавляем шанс на большие платформы на высоте
+      let radiusMultiplier = 0.85 + Math.random() * 0.3;
+      if (heightInMeters > 20 && Math.random() < 0.2) {
+        radiusMultiplier = 1.1 + Math.random() * 0.3; // Большие платформы
+      }
+      const radius = this.platformRadius * radiusMultiplier;
       
       // Получаем переиспользуемый объект платформы из пула
       const platform = this.getPlatformFromPool(x, y, radius);
+      platform.color = platformColor; // Устанавливаем цвет в зависимости от высоты
       this.platforms.push(platform);
     }
     
@@ -154,18 +189,30 @@ export class EndlessMode {
     // Сброс пула объектов в начале каждого обновления
     this.resetPool();
     
-    // Вычисляем скорость прокрутки на основе подъема палки
+    // Меняем логику движения экрана - теперь двигаемся только если палка поднимается вверх
     // boardElevation: отрицательное значение = палка поднята вверх
-    // Ограничиваем минимальную скорость baseSpeed, а максимальную - baseSpeed * 2.5 (снижено)
-    this.speedMultiplier = 1.0 + Math.max(0, -boardElevation / 150); // Уменьшаем влияние подъема
-    const scrollSpeed = this.baseSpeed * Math.min(this.speedMultiplier, 2.5); // Ограничиваем максимум
+    let scrollSpeed = 0;
     
-    // Обновляем смещение viewport
-    const pixelDelta = scrollSpeed * deltaTime;
-    this.viewportOffset += pixelDelta;
+    // Если палка поднимается (boardElevation < 0), двигаем экран
+    if (boardElevation < 0) {
+      // Вычисляем скорость прокрутки на основе подъема палки
+      this.speedMultiplier = 1.0 + Math.max(0, -boardElevation / 100); // Увеличиваем влияние подъема
+      scrollSpeed = this.baseSpeed * Math.min(this.speedMultiplier, 3.0); // Позволяем большую максимальную скорость
+      
+      // Обновляем смещение viewport только если палка двигается вверх
+      const pixelDelta = scrollSpeed * deltaTime;
+      this.viewportOffset += pixelDelta;
+    } else {
+      // Если палка не двигается вверх, скорость прокрутки = 0
+      this.speedMultiplier = 0;
+    }
     
     // Обновляем счётчик метров с десятыми долями
     this.heightInMeters = this.viewportOffset / this.pixelsPerMeter;
+    
+    // Адаптивная сложность - уменьшаем расстояние между платформами с высотой
+    this.minPlatformSpacing = Math.max(70, 90 - (this.heightInMeters / 100) * 20);
+    this.maxPlatformSpacing = Math.max(120, 180 - (this.heightInMeters / 100) * 60);
     
     // Временный массив для активных платформ
     const activePlatforms: Platform[] = [];
@@ -183,6 +230,8 @@ export class EndlessMode {
           platform.position.y,
           platform.radius
         );
+        // Сохраняем цвет платформы
+        reusedPlatform.color = platform.color;
         activePlatforms.push(reusedPlatform);
         
         // Если достигли лимита видимых платформ, прекращаем добавление
@@ -259,6 +308,20 @@ export class EndlessMode {
     
     // Отрисовываем фоновые линии для визуального ощущения движения
     this.drawBackgroundLines(ctx);
+    
+    // Отображаем показатель скорости
+    // Индикатор скорости в виде полосы, размер которой зависит от скорости
+    ctx.fillStyle = "rgba(0, 200, 255, 0.6)";
+    const speedBarHeight = Math.min(100, this.speedMultiplier * 33);
+    if (speedBarHeight > 0) {
+      ctx.fillRect(this.viewportWidth - 20, this.viewportHeight - speedBarHeight, 10, speedBarHeight);
+    }
+    
+    // Подпись для индикатора скорости
+    ctx.font = "12px Arial";
+    ctx.fillStyle = "white";
+    ctx.textAlign = "right";
+    ctx.fillText("Скорость", this.viewportWidth - 25, this.viewportHeight - 10);
   }
 
   // Отрисовка счетчика метров
