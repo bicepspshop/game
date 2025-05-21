@@ -394,8 +394,8 @@ export class LevelGenerator {
 
     if (barrierHoles <= 0) return
 
-    // Радиус барьера вокруг целевой лунки
-    const barrierRadius = targetHole.radius * 3.5 + (level > 15 ? 10 : 20)
+    // Радиус барьера вокруг целевой лунки - увеличиваем, чтобы гарантировать отсутствие препятствий внутри целевой лунки
+    const barrierRadius = targetHole.radius * 4.5 + (level > 15 ? 15 : 25)
 
     // Создаем лунки по кругу вокруг целевой
     for (let i = 0; i < barrierHoles; i++) {
@@ -688,7 +688,7 @@ export class LevelGenerator {
     for (const obstacle of this.polygonObstacles) {
       const distance = Vector2D.distance(position, obstacle.position);
       const minDistance = obstacle.isTarget
-        ? obstacle.boundingRadius + radius + 10
+        ? obstacle.boundingRadius + radius + 30 // Увеличиваем минимальное расстояние от целевого отверстия
         : params.minDistanceBetweenHoles;
         
       if (distance < minDistance) {
@@ -711,24 +711,38 @@ export class LevelGenerator {
     // Проверяем расстояние до лунок
     for (const hole of this.holes) {
       const distance = Vector2D.distance(position, hole.position);
-      const minDistance = hole.isTarget
-        ? this.targetHoleRadius + radius + 15 // Дополнительный отступ от целевой лунки
-        : params.minDistanceBetweenHoles;
-        
-      if (distance < minDistance) {
-        return false;
+      
+      // Если это целевая лунка, используем увеличенный отступ
+      if (hole.isTarget) {
+        // Предотвращаем создание препятствий внутри целевой лунки или слишком близко к ней
+        const safeDistance = hole.radius * 2.5 + radius;
+        if (distance < safeDistance) {
+          return false;
+        }
+      } else {
+        // Для обычных лунок используем стандартное минимальное расстояние
+        if (distance < params.minDistanceBetweenHoles) {
+          return false;
+        }
       }
     }
     
     // Проверяем расстояние до других полигональных препятствий
     for (const obstacle of this.polygonObstacles) {
       const distance = Vector2D.distance(position, obstacle.position);
-      const minDistance = obstacle.isTarget
-        ? obstacle.boundingRadius + radius + 15
-        : params.minDistanceBetweenHoles;
-        
-      if (distance < minDistance) {
-        return false;
+      
+      // Если это целевое препятствие, используем увеличенный отступ
+      if (obstacle.isTarget) {
+        // Безопасное расстояние от целевого полигонального препятствия
+        const safeDistance = obstacle.boundingRadius * 2.5 + radius;
+        if (distance < safeDistance) {
+          return false;
+        }
+      } else {
+        // Для обычных препятствий используем стандартное минимальное расстояние
+        if (distance < params.minDistanceBetweenHoles) {
+          return false;
+        }
       }
     }
     
@@ -906,7 +920,39 @@ export class LevelGenerator {
         
         // Если это обычное препятствие (серое) и шарик пересекается с ним
         if (!obstacle.isTarget && obstacle.intersectsCircle(ballPosition, ballRadius * 0.7)) {
-          return this.holes.length + i;
+          // Проверяем, что это препятствие не находится внутри какой-либо целевой лунки
+          let insideTarget = false;
+          
+          // Проверяем все целевые круглые лунки
+          for (const hole of this.holes) {
+            if (hole.isTarget) {
+              const distance = Vector2D.distance(obstacle.position, hole.position);
+              // Увеличиваем радиус проверки, чтобы избежать столкновений с препятствиями внутри целевой лунки
+              if (distance < hole.radius * 1.5) {
+                insideTarget = true;
+                break;
+              }
+            }
+          }
+          
+          // Проверяем все целевые полигональные лунки
+          if (!insideTarget) {
+            for (const targetObstacle of this.polygonObstacles) {
+              if (targetObstacle.isTarget) {
+                const distance = Vector2D.distance(obstacle.position, targetObstacle.position);
+                // Увеличиваем радиус проверки для полигональных лунок
+                if (distance < targetObstacle.boundingRadius * 1.5) {
+                  insideTarget = true;
+                  break;
+                }
+              }
+            }
+          }
+          
+          // Если препятствие не внутри целевой лунки, регистрируем столкновение
+          if (!insideTarget) {
+            return this.holes.length + i;
+          }
         }
       }
     }
