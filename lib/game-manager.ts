@@ -125,7 +125,29 @@ export class GameManager {
       cancelAnimationFrame(this.animationFrameId)
       this.animationFrameId = null
     }
+    
+    // Явно уничтожаем endlessMode для освобождения ресурсов
+    if (this.endlessMode) {
+      this.endlessMode.destroy();
+      this.endlessMode = null;
+    }
+    
+    // Сбрасываем все ссылки на объекты для помощи сборщику мусора
+    if (this.ball) {
+      this.physics.removeBody(this.ball);
+      this.ball = null;
+    }
+    
     this.gameActive = false
+    
+    // Принудительно вызываем сборку мусора, если это возможно
+    if (typeof window !== 'undefined' && window.gc) {
+      try {
+        window.gc();
+      } catch (e) {
+        console.log('GC not available');
+      }
+    }
   }
 
   public restart(): void {
@@ -197,6 +219,11 @@ export class GameManager {
     this.rightInput = 0
     this.leftVerticalInput = 0
     this.rightVerticalInput = 0
+    
+    // Сброс всех массивов, которые могут накапливать объекты
+    if (this.isEndlessMode && this.endlessMode) {
+      this.endlessMode.reset();
+    }
   }
 
   public setInputs(leftInput: number, rightInput: number, leftVerticalInput: number, rightVerticalInput: number): void {

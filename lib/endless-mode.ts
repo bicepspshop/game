@@ -19,15 +19,16 @@ export class EndlessMode {
   private viewportOffset = 0; // Смещение области просмотра (в пикселях)
   private heightInMeters = 0; // Высота в метрах
   private pixelsPerMeter = 100; // Коэффициент перевода пикселей в метры
-  private platformDensity = 0.6; // Плотность платформ (0-1)
+  private platformDensity = 0.4; // Уменьшена плотность платформ с 0.6 до 0.4
   private platformPool: Platform[] = []; // Пул переиспользуемых объектов платформ
   private poolIndex = 0; // Индекс для пула объектов
   private lastPlatformY = 0; // Y-координата последней созданной платформы
-  private minPlatformSpacing = 70; // Минимальное расстояние между платформами по Y
-  private maxPlatformSpacing = 150; // Максимальное расстояние между платформами по Y
+  private minPlatformSpacing = 90; // Увеличен минимальный интервал с 70 до 90
+  private maxPlatformSpacing = 180; // Увеличен максимальный интервал с 150 до 180
   private baseSpeed = 80; // Базовая скорость прокрутки (пикселей в секунду)
   private speedMultiplier = 1.0; // Множитель скорости от движения палки
   private isPaused = false; // Флаг паузы
+  private maxVisiblePlatforms = 50; // Ограничение на количество видимых платформ
 
   constructor(viewportWidth: number, viewportHeight: number, platformRadius: number = 15) {
     this.viewportWidth = viewportWidth;
@@ -38,8 +39,8 @@ export class EndlessMode {
     this.minX = platformRadius * 2;
     this.maxX = viewportWidth - platformRadius * 2;
     
-    // Инициализируем пул объектов платформ (для optimization)
-    this.initPlatformPool(100); // Создаем 100 объектов для начала
+    // Инициализируем пул объектов платформ (для optimization) - уменьшаем начальный размер
+    this.initPlatformPool(50); // Создаем 50 объектов для начала вместо 100
     
     // Генерируем начальный набор платформ
     this.generateInitialPlatforms();
@@ -56,10 +57,10 @@ export class EndlessMode {
   private getPlatformFromPool(x: number, y: number, radius: number): Platform {
     // Если пул исчерпан, расширяем его
     if (this.poolIndex >= this.platformPool.length) {
-      for (let i = 0; i < 20; i++) { // Добавляем ещё 20 объектов
+      // Добавляем только 10 объектов за раз, чтобы избежать перерасхода памяти
+      for (let i = 0; i < 10; i++) {
         this.platformPool.push(new Platform(new Vector2D(0, 0), this.platformRadius));
       }
-      console.log(`Platform pool expanded to ${this.platformPool.length}`);
     }
     
     const platform = this.platformPool[this.poolIndex++];
@@ -83,8 +84,8 @@ export class EndlessMode {
     this.heightInMeters = 0;
     this.lastPlatformY = this.viewportHeight;
 
-    // Генерируем платформы на 2 экрана вперед
-    for (let y = this.viewportHeight; y > -this.viewportHeight; y -= this.getRandomSpacing()) {
+    // Генерируем платформы только на 1 экран вперед (вместо 2)
+    for (let y = this.viewportHeight; y > 0; y -= this.getRandomSpacing()) {
       this.spawnPlatformRow(y);
     }
   }
@@ -96,8 +97,8 @@ export class EndlessMode {
 
   // Создание ряда платформ на определенной высоте
   private spawnPlatformRow(y: number): void {
-    // Вычисляем количество платформ в ряду на основе плотности
-    const maxPlatformsInRow = Math.floor(this.viewportWidth / (this.platformRadius * 4));
+    // Вычисляем количество платформ в ряду на основе плотности - меньше платформ
+    const maxPlatformsInRow = Math.floor(this.viewportWidth / (this.platformRadius * 5)); // Увеличен делитель с 4 до 5
     const platformsToCreate = Math.max(1, Math.floor(maxPlatformsInRow * this.platformDensity * Math.random()));
     
     // Создаем безопасный проход (минимум 2.5 диаметра шарика)
@@ -108,12 +109,18 @@ export class EndlessMode {
     for (let i = 0; i < platformsToCreate; i++) {
       let x;
       let isInSafePath;
+      let attempts = 0;
+      const maxAttempts = 10; // Ограничиваем количество попыток
       
       // Пробуем разместить платформу вне безопасного прохода
       do {
         x = this.minX + Math.random() * (this.maxX - this.minX);
         isInSafePath = x >= safePathX && x <= safePathX + safePathWidth;
-      } while (isInSafePath);
+        attempts++;
+      } while (isInSafePath && attempts < maxAttempts);
+      
+      // Если не удалось разместить вне пути после maxAttempts попыток, пропускаем
+      if (isInSafePath) continue;
       
       // Добавляем небольшую вариацию размера платформ
       const radius = this.platformRadius * (0.85 + Math.random() * 0.3);
@@ -135,9 +142,9 @@ export class EndlessMode {
     
     // Вычисляем скорость прокрутки на основе подъема палки
     // boardElevation: отрицательное значение = палка поднята вверх
-    // Ограничиваем минимальную скорость baseSpeed, а максимальную - baseSpeed * 3
-    this.speedMultiplier = 1.0 + Math.max(0, -boardElevation / 100);
-    const scrollSpeed = this.baseSpeed * this.speedMultiplier;
+    // Ограничиваем минимальную скорость baseSpeed, а максимальную - baseSpeed * 2.5 (снижено)
+    this.speedMultiplier = 1.0 + Math.max(0, -boardElevation / 150); // Уменьшаем влияние подъема
+    const scrollSpeed = this.baseSpeed * Math.min(this.speedMultiplier, 2.5); // Ограничиваем максимум
     
     // Обновляем смещение viewport
     const pixelDelta = scrollSpeed * deltaTime;
@@ -160,6 +167,11 @@ export class EndlessMode {
           platform.radius
         );
         activePlatforms.push(reusedPlatform);
+        
+        // Если достигли лимита видимых платформ, прекращаем добавление
+        if (activePlatforms.length >= this.maxVisiblePlatforms) {
+          break;
+        }
       }
     }
     
@@ -170,8 +182,8 @@ export class EndlessMode {
     const highestVisibleY = this.lastPlatformY - this.viewportOffset;
     
     // Генерируем новые платформы, если верхняя часть видимой области приближается к последней платформе
-    // Делаем запас на один экран вверх
-    while (highestVisibleY > -this.viewportHeight) {
+    // Генерируем только если у нас меньше максимального количества платформ
+    if (highestVisibleY > 0 && this.platforms.length < this.maxVisiblePlatforms) {
       const newY = this.lastPlatformY - this.getRandomSpacing();
       this.spawnPlatformRow(newY);
     }
@@ -214,35 +226,45 @@ export class EndlessMode {
     // Опционально: отображаем скорость подъема
     ctx.font = "16px Arial";
     ctx.fillText(`Скорость: ${this.speedMultiplier.toFixed(1)}x`, 20, 60);
+    
+    // Отладочная информация - количество платформ
+    // ctx.font = "12px Arial";
+    // ctx.fillText(`Платформ: ${this.platforms.length}`, 20, 80);
   }
 
-  // Отрисовка фоновых линий для визуального ощущения движения
+  // Отрисовка фоновых линий для визуального ощущения движения - оптимизированная версия
   private drawBackgroundLines(ctx: CanvasRenderingContext2D): void {
     ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
     ctx.lineWidth = 1;
     
     // Рисуем горизонтальные линии через равные промежутки
-    const lineSpacing = 50; // Расстояние между линиями в пикселях
+    const lineSpacing = 100; // Увеличено расстояние с 50 до 100 пикселей
     
     // Вычисляем, какая линия должна быть внизу экрана
     const bottomLineY = Math.ceil(this.viewportOffset / lineSpacing) * lineSpacing;
     
-    // Рисуем линии от нижней до верхней части экрана
-    for (let y = bottomLineY; y > bottomLineY - this.viewportHeight - lineSpacing; y -= lineSpacing) {
+    // Рисуем только 8 линий вместо всех возможных
+    const maxLines = 8;
+    
+    for (let i = 0; i < maxLines; i++) {
+      const y = bottomLineY - i * lineSpacing;
       const screenY = y - this.viewportOffset;
       
-      ctx.beginPath();
-      ctx.moveTo(0, screenY);
-      ctx.lineTo(this.viewportWidth, screenY);
-      ctx.stroke();
-      
-      // Отмечаем каждые 100 пикселей (1 метр) значением
-      if (y % (this.pixelsPerMeter) === 0) {
-        const meters = y / this.pixelsPerMeter;
-        ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-        ctx.font = "12px Arial";
-        ctx.textAlign = "left";
-        ctx.fillText(`${meters}m`, 10, screenY - 5);
+      // Если линия видна на экране
+      if (screenY >= 0 && screenY <= this.viewportHeight) {
+        ctx.beginPath();
+        ctx.moveTo(0, screenY);
+        ctx.lineTo(this.viewportWidth, screenY);
+        ctx.stroke();
+        
+        // Отмечаем каждые 100 пикселей (1 метр) значением - только для линий, кратных 500
+        if (y % 500 === 0) {
+          const meters = y / this.pixelsPerMeter;
+          ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+          ctx.font = "12px Arial";
+          ctx.textAlign = "left";
+          ctx.fillText(`${meters}m`, 10, screenY - 5);
+        }
       }
     }
   }
@@ -279,7 +301,23 @@ export class EndlessMode {
 
   // Сброс бесконечного режима
   public reset(): void {
+    this.platforms = []; // Очищаем все платформы
+    this.poolIndex = 0; // Сбрасываем индекс пула
+    
+    // Сбрасываем базовые параметры
+    this.viewportOffset = 0;
+    this.heightInMeters = 0;
+    this.lastPlatformY = this.viewportHeight;
+    
+    // Генерируем новые начальные платформы
     this.generateInitialPlatforms();
     this.isPaused = false;
+  }
+  
+  // Явное освобождение ресурсов
+  public destroy(): void {
+    this.platforms = [];
+    this.platformPool = [];
+    this.poolIndex = 0;
   }
 }

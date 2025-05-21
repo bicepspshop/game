@@ -1,0 +1,29 @@
+  const startGame = (startLevel = 1) => {
+    console.log("Starting game at level:", startLevel)
+    
+    // Сначала уничтожим существующую игру, если она есть
+    if (gameRef.current) {
+      gameRef.current.destroy();
+      gameRef.current = null;
+    }
+    
+    // Сбрасываем состояние игры
+    setLevel(startLevel)
+    setScore(0)
+    setMeters(0)
+    setGameOver(false)
+    setGameInitialized(false)
+    
+    try {
+      // Убедимся, что мы не в бесконечном режиме
+      setIsEndlessMode(false)
+      
+      // Даем React время обновить состояние, затем показываем игровой экран
+      setTimeout(() => {
+        setShowMenu(false)
+      }, 100);
+    } catch (error) {
+      console.error("Error starting game:", error);
+      // В случае ошибки остаемся в меню
+    }
+  }

@@ -233,43 +233,112 @@ export default function IceColdBeer() {
 
   const startGame = (startLevel = 1) => {
     console.log("Starting game at level:", startLevel)
+    
+    // Сначала уничтожим существующую игру, если она есть
+    if (gameRef.current) {
+      gameRef.current.destroy();
+      gameRef.current = null;
+    }
+    
+    // Сбрасываем состояние игры
     setLevel(startLevel)
     setScore(0)
     setMeters(0)
     setGameOver(false)
-    setIsEndlessMode(false)
-    setShowMenu(false)
+    setGameInitialized(false)
+    
+    try {
+      // Убедимся, что мы не в бесконечном режиме
+      setIsEndlessMode(false)
+      
+      // Даем React время обновить состояние, затем показываем игровой экран
+      setTimeout(() => {
+        setShowMenu(false)
+      }, 100);
+    } catch (error) {
+      console.error("Error starting game:", error);
+      // В случае ошибки остаемся в меню
+    }
   }
 
   const startEndlessMode = () => {
     console.log("Starting endless mode")
+    
+    // Сначала уничтожим существующую игру, если она есть
+    if (gameRef.current) {
+      gameRef.current.destroy();
+      gameRef.current = null;
+    }
+    
+    // Сбрасываем состояние игры
     setLevel(1)
     setScore(0)
     setMeters(0)
     setGameOver(false)
-    setIsEndlessMode(true)
-    setShowMenu(false)
+    setGameInitialized(false)
+    
+    try {
+      // Сначала включаем флаг бесконечного режима
+      setIsEndlessMode(true)
+      
+      // Даем React время обновить состояние, затем показываем игровой экран
+      setTimeout(() => {
+        setShowMenu(false)
+      }, 100);
+    } catch (error) {
+      console.error("Error starting endless mode:", error);
+      // В случае ошибки остаемся в меню
+      setIsEndlessMode(false);
+    }
   }
 
   const handleRestart = () => {
     console.log("Restarting game...")
-    setScore(0)
-    setLevel(1)
-    setMeters(0)
-    setGameOver(false)
+    
+    try {
+      // Уничтожаем текущую игру
+      if (gameRef.current) {
+        gameRef.current.destroy();
+        gameRef.current = null;
+      }
+      
+      // Сбрасываем состояния игры
+      setScore(0)
+      setLevel(1)
+      setMeters(0)
+      setGameOver(false)
+      setGameInitialized(false)
 
-    // Используем триггер для полного пересоздания игры
-    setRestartTrigger((prev) => prev + 1)
+      // Используем триггер для полного пересоздания игры
+      setRestartTrigger((prev) => prev + 1)
+    } catch (error) {
+      console.error("Error restarting game:", error);
+      // В случае ошибки вернемся в меню
+      setShowMenu(true);
+    }
   }
 
   const handleBackToMenu = () => {
     console.log("Going back to menu...")
-    if (gameRef.current) {
-      gameRef.current.destroy()
-      gameRef.current = null
+    try {
+      // Явно уничтожаем игру перед возвратом в меню
+      if (gameRef.current) {
+        gameRef.current.destroy()
+        gameRef.current = null
+      }
+      // Очищаем все состояния, которые могут содержать ссылки на объекты
       setGameInitialized(false)
+      
+      // Может помочь сборщику мусора освободить память
+      setTimeout(() => {
+        // Отложенное обновление интерфейса
+        setShowMenu(true);
+      }, 100);
+    } catch (error) {
+      console.error("Error while going back to menu:", error);
+      // В случае ошибки всё равно возвращаемся в меню
+      setShowMenu(true);
     }
-    setShowMenu(true)
   }
 
   const handleLeftJoystickMove = (x: number, y: number) => {
