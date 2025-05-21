@@ -49,6 +49,167 @@ export class LevelGenerator {
     this.initLevelParameters()
   }
   
+  // Шаблоны и методы расположения отверстий на основе аркадной версии
+  private levelTemplates = [
+    {
+      name: "Вертикальные ворота",
+      minLevel: 1,
+      maxLevel: 7,
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
+        const points: Vector2[] = [];
+        const gateWidth = width * 0.4;
+        const gateHeight = height * 0.4;
+        
+        const leftGateX = width / 2 - gateWidth / 2;
+        const rightGateX = width / 2 + gateWidth / 2;
+        const gateY = height * 0.3;
+        
+        // Количество отверстий в каждой вертикальной линии
+        const numHoles = 3 + Math.min(3, Math.floor(level / 2));
+        
+        // Создаем левую и правую вертикальные линии отверстий
+        for (let i = 0; i < numHoles; i++) {
+          const y = gateY + (gateHeight / (numHoles - 1)) * i;
+          
+          points.push(new Vector2D(leftGateX, y));
+          points.push(new Vector2D(rightGateX, y));
+        }
+        
+        return points;
+      },
+      getTargetPosition: (width: number, height: number): Vector2D => {
+        return new Vector2D(width / 2, height * 0.65);
+      }
+    },
+    {
+      name: "Диагональный каскад",
+      minLevel: 4,
+      maxLevel: 12,
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
+        const points: Vector2[] = [];
+        const numHoles = 5 + Math.min(3, Math.floor((level - 4) / 3));
+        
+        // Направление меняется в зависимости от уровня
+        const leftToRight = level % 2 === 0;
+        const startX = leftToRight ? width * 0.2 : width * 0.8;
+        const startY = height * 0.2;
+        
+        const stepX = (width * 0.6) / (numHoles - 1) * (leftToRight ? 1 : -1);
+        const stepY = (height * 0.5) / (numHoles - 1);
+        
+        for (let i = 0; i < numHoles; i++) {
+          points.push(new Vector2D(
+            startX + stepX * i,
+            startY + stepY * i
+          ));
+        }
+        
+        return points;
+      },
+      getTargetPosition: (width: number, height: number): Vector2D => {
+        return new Vector2D(width / 2, height * 0.7);
+      }
+    },
+    {
+      name: "Зигзагообразный коридор",
+      minLevel: 8,
+      maxLevel: 18,
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
+        const points: Vector2[] = [];
+        const numZigs = 3 + Math.min(3, Math.floor((level - 8) / 3));
+        
+        const startX = width * 0.2;
+        const endX = width * 0.8;
+        const startY = height * 0.3;
+        
+        const xStep = (endX - startX) / (numZigs - 1);
+        const amplitude = height * (0.15 + (level - 8) * 0.01);
+        
+        for (let i = 0; i < numZigs; i++) {
+          const x = startX + i * xStep;
+          const y = startY + (i % 2 === 0 ? 0 : amplitude);
+          
+          // Добавляем основные точки зигзага
+          points.push(new Vector2D(x, y));
+          
+          // На высоких уровнях добавляем дополнительные отверстия вокруг основных точек
+          if (level > 12) {
+            points.push(new Vector2D(x - width * 0.05, y - height * 0.05));
+            points.push(new Vector2D(x + width * 0.05, y - height * 0.05));
+          }
+        }
+        
+        return points;
+      },
+      getTargetPosition: (width: number, height: number): Vector2D => {
+        return new Vector2D(width / 2, height * 0.7);
+      }
+    },
+    {
+      name: "Защитный барьер",
+      minLevel: 13,
+      maxLevel: 25,
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
+        const centerX = width / 2;
+        const centerY = height * 0.35;
+        const points: Vector2[] = [];
+        
+        const radius = width * 0.15;
+        const numHoles = 6 + Math.min(4, Math.floor((level - 13) / 2));
+        
+        for (let i = 0; i < numHoles; i++) {
+          const angle = (i / numHoles) * Math.PI * 2;
+          
+          // Создаем разрыв в барьере для возможности прохода
+          const gapAngle = Math.PI / 2; // Разрыв внизу (для входа снизу)
+          const gapWidth = Math.PI / (4 + (level - 13) * 0.1);
+          
+          // Пропускаем создание отверстия, если оно в зоне разрыва
+          if (Math.abs(angle - gapAngle) < gapWidth) continue;
+          
+          points.push(new Vector2D(
+            centerX + Math.cos(angle) * radius,
+            centerY + Math.sin(angle) * radius
+          ));
+        }
+        
+        return points;
+      },
+      getTargetPosition: (width: number, height: number): Vector2D => {
+        return new Vector2D(width / 2, height * 0.35);
+      }
+    },
+    {
+      name: "Кольцевой кластер",
+      minLevel: 19,
+      maxLevel: 30,
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
+        const centerX = width / 2;
+        const centerY = height * 0.4;
+        const points: Vector2[] = [];
+        
+        const radius = width * 0.2 + (level - 19) * 2;
+        const numHoles = 8 + Math.min(4, Math.floor((level - 19) / 2));
+        
+        for (let i = 0; i < numHoles; i++) {
+          const angle = (i / numHoles) * Math.PI * 2;
+          const randomOffset = (Math.random() - 0.5) * 0.1;
+          const randomAngle = angle + randomOffset;
+          
+          points.push(new Vector2D(
+            centerX + Math.cos(randomAngle) * radius,
+            centerY + Math.sin(randomAngle) * radius
+          ));
+        }
+        
+        return points;
+      },
+      getTargetPosition: (width: number, height: number): Vector2D => {
+        return new Vector2D(width / 2, height * 0.4);
+      }
+    }
+  ];
+
   // Инициализация параметров сложности для каждого уровня
   private initLevelParameters(): void {
     // Базовые параметры
@@ -99,32 +260,84 @@ export class LevelGenerator {
     
     console.log(`Level ${level}: target=${params.numHoles} holes, gap=${params.gapWidth}px, target size=${params.targetHoleSize}`)
     
-    // Сначала создаем целевую лунку
-    const targetHole = this.createTargetHole(level, params.numHoles)
-    this.holes.push(targetHole)
+    // Используем шаблоны из оригинального аркадного автомата
+    const applicableTemplates = this.levelTemplates.filter(
+      template => level >= template.minLevel && level <= template.maxLevel
+    );
     
-    // Создаем барьер вокруг целевой лунки с уровня 4
-    if (level > 3) {
-      this.createProtectiveBarrier(targetHole, level, grayHoleRadius, params.barrierCount)
+    // Выбираем один или два подходящих шаблона
+    let selectedTemplates = [];
+    if (applicableTemplates.length > 0) {
+      // Для низких уровней используем только один шаблон
+      if (level <= 5) {
+        selectedTemplates = [applicableTemplates[0]];
+      } else {
+        // Для более высоких уровней можем комбинировать шаблоны
+        // Сортируем по уровню сложности и берем наиболее подходящие
+        applicableTemplates.sort((a, b) => a.minLevel - b.minLevel);
+        
+        // Для некоторых уровней берем два шаблона
+        if (level > 15) {
+          // Берем до двух подходящих шаблонов
+          selectedTemplates = applicableTemplates.slice(-2);
+        } else {
+          // Берем один наиболее подходящий
+          selectedTemplates = [applicableTemplates[applicableTemplates.length - 1]];
+        }
+      }
     }
     
-    // Добавляем шаблонные препятствия в зависимости от уровня
-    this.addPatternedObstacles(level, grayHoleRadius, params);
+    // Если нет подходящих шаблонов, используем обычную генерацию
+    if (selectedTemplates.length === 0) {
+      // Сначала создаем целевую лунку
+      const targetHole = this.createTargetHole(level, params.numHoles);
+      this.holes.push(targetHole);
+      
+      // Создаем барьер вокруг целевой лунки с уровня 4
+      if (level > 3) {
+        this.createProtectiveBarrier(targetHole, level, grayHoleRadius, params.barrierCount);
+      }
+      
+      // Добавляем шаблонные препятствия в зависимости от уровня
+      this.addPatternedObstacles(level, grayHoleRadius, params);
+    } else {
+      // Используем выбранные шаблоны из оригинальной игры
+      const mainTemplate = selectedTemplates[0];
+      
+      // Создаем целевую лунку на основе шаблона
+      const targetPosition = mainTemplate.getTargetPosition(this.width, this.height);
+      const targetHole = new Hole(targetPosition, this.targetHoleRadius, true);
+      this.holes.push(targetHole);
+      
+      // Генерируем отверстия для каждого выбранного шаблона
+      for (const template of selectedTemplates) {
+        const holePositions = template.generateHoles(this.width, this.height, level, this.holeRadius);
+        
+        // Преобразуем позиции в отверстия
+        for (const position of holePositions) {
+          // Проверяем достаточность расстояния от целевой лунки
+          const distToTarget = Vector2D.distance(position, targetHole.position);
+          if (distToTarget > this.targetHoleRadius * 2.5) {
+            this.holes.push(new Hole(position, grayHoleRadius, false));
+          }
+        }
+      }
+    }
     
-    // Добавляем оставшиеся случайные лунки
+    // Добавляем оставшиеся случайные лунки для заполнения до нужного количества
     this.addRandomObstacles(level, grayHoleRadius, params);
     
     // Проверяем проходимость уровня с использованием PathFinder
     const startPosition = new Vector2D(this.width / 2, this.height - 50); // Начальная позиция шарика
-    const hasPath = this.checkLevelSolvability(startPosition, targetHole.position, params.gapWidth);
+    const hasPath = this.checkLevelSolvability(startPosition, this.holes[0].position, params.gapWidth);
     
     // Если уровень непроходим, упрощаем его
     if (!hasPath) {
       console.log(`Level ${level} not solvable, simplifying...`);
-      this.removeBlockingObstacles(startPosition, targetHole.position, params.gapWidth);
+      this.removeBlockingObstacles(startPosition, this.holes[0].position, params.gapWidth);
     }
 
-    console.log(`Generated ${this.holes.length} holes for level ${level}`)
+    console.log(`Generated ${this.holes.length} holes for level ${level}`);
     
     // Возвращаем индекс целевой лунки (всегда 0, т.к. она добавляется первой)
     return 0;

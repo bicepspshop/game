@@ -1,4 +1,5 @@
 import { Vector2D } from "./physics"
+import { EndlessGenerator, Obstacle } from "./endless-generator" // Импортируем наш новый генератор
 
 // Класс для платформ в бесконечном режиме
 class Platform {
@@ -27,22 +28,34 @@ export class EndlessMode {
   private pixelsPerMeter: number = 100
   private maxVisiblePlatforms: number = 150
   private segmentHeight: number = 500
+  
+  // Новый генератор уровней, основанный на аркадном автомате
+  private endlessGenerator: EndlessGenerator | null = null
 
   constructor(width: number, height: number, platformRadius: number) {
     this.viewportWidth = width
     this.viewportHeight = height
     this.lastPlatformY = height
     
-    // Инициализируем пул объектов для оптимизации
+    // Инициализируем наш новый генератор уровней
+    this.endlessGenerator = new EndlessGenerator(
+      width, 
+      height, 
+      width * 0.05, // левый край
+      width * 0.95, // правый край
+      platformRadius
+    )
+    
+    // Инициализируем пул объектов для оптимизации (для старых платформ)
     for (let i = 0; i < this.poolSize; i++) {
       this.platformPool.push(new Platform(new Vector2D(0, 0), platformRadius));
     }
     
-    // Генерируем начальные платформы
-    this.generateInitialPlatforms()
+    // Генерируем начальные уровни с новым генератором
+    this.endlessGenerator.generateInitialSegment()
   }
   
-  // Получение платформы из пула объектов
+  // Получение платформы из пула объектов (для совместимости)
   private getPlatformFromPool(x: number, y: number, radius: number): Platform {
     // Если достигли конца пула, начинаем сначала
     if (this.poolIndex >= this.poolSize) {
@@ -60,96 +73,6 @@ export class EndlessMode {
     return platform;
   }
 
-  // Генерация начальных платформ
-  private generateInitialPlatforms(): void {
-    // Создаем начальные платформы для старта игры
-    // Начинаем с самой нижней части и двигаемся вверх
-    let y = this.viewportHeight
-    
-    // Создаем несколько рядов платформ
-    for (let i = 0; i < 15; i++) {
-      this.spawnPlatformRow(y)
-      y -= this.getRandomSpacing()
-    }
-    
-    // Запоминаем верхнюю платформу
-    this.lastPlatformY = y
-  }
-  
-  // Генерация случайного расстояния между рядами платформ
-  private getRandomSpacing(): number {
-    return this.minPlatformSpacing + Math.random() * (this.maxPlatformSpacing - this.minPlatformSpacing)
-  }
-  
-  // Создание ряда платформ на заданной высоте
-  private spawnPlatformRow(y: number): void {
-    // Количество платформ в ряду
-    const minPlatforms = 3
-    const maxPlatforms = 6
-    
-    // Чем выше, тем больше платформ для усложнения
-    const heightFactor = Math.min(1, this.heightInMeters / 300)
-    const numPlatforms = minPlatforms + Math.floor(heightFactor * (maxPlatforms - minPlatforms))
-    
-    // Добавляем случайность
-    const actualPlatforms = numPlatforms + Math.floor(Math.random() * 3) - 1
-    
-    // Ширина сектора для равномерного распределения
-    const sectorWidth = this.viewportWidth / (actualPlatforms + 1)
-    
-    for (let i = 0; i < actualPlatforms; i++) {
-      // Базовая позиция X - равномерно распределяем по ширине
-      const baseX = (i + 1) * sectorWidth
-      
-      // Добавляем случайное смещение внутри сектора
-      const offsetX = (Math.random() - 0.5) * sectorWidth * 0.7
-      const x = baseX + offsetX
-      
-      // Получаем платформу из пула и настраиваем
-      const platform = this.getPlatformFromPool(x, y, 20 + Math.random() * 5)
-      
-      // Определяем цвет платформы - чем выше, тем сложнее
-      if (this.heightInMeters > 100 && Math.random() < 0.1) {
-        // Небольшой шанс для красных "смертельных" платформ на больших высотах
-        platform.color = "#FF3864"
-      } else {
-        platform.color = "#4b5563"
-      }
-      
-      this.platforms.push(platform)
-    }
-    
-    // Обновляем последнюю высоту
-    if (y < this.lastPlatformY) {
-      this.lastPlatformY = y
-    }
-  }
-  
-  // Создание свободного прохода в указанном сегменте
-  private createPathway(segmentIndex: number): void {
-    // Базовая Y-координата для сегмента
-    const segmentY = segmentIndex * this.segmentHeight
-    
-    // Удаляем некоторые платформы, чтобы создать проход
-    const pathWidth = 80 // Ширина прохода
-    
-    // Выбираем случайную X-координату для прохода
-    const pathX = this.viewportWidth * 0.2 + Math.random() * (this.viewportWidth * 0.6)
-    
-    // Отфильтровываем платформы, которые попадают в проход
-    this.platforms = this.platforms.filter(platform => {
-      // Проверяем, находится ли платформа в текущем сегменте
-      const inSegment = platform.position.y >= segmentY && 
-                       platform.position.y < segmentY + this.segmentHeight
-      
-      // Проверяем, находится ли платформа в зоне прохода
-      const inPathway = Math.abs(platform.position.x - pathX) < pathWidth / 2
-      
-      // Если платформа в сегменте и в проходе, удаляем её
-      return !(inSegment && inPathway)
-    })
-  }
-
   // Обновление состояния бесконечного режима
   public update(deltaTime: number, boardElevation: number): void {
     if (this.isPaused) return
@@ -163,128 +86,34 @@ export class EndlessMode {
       this.speedMultiplier += deltaTime * (Math.abs(boardElevation) / 30)
       // Применяем базовую скорость с множителем и влиянием подъема
       scrollSpeed = this.baseSpeed * this.speedMultiplier * Math.pow(Math.abs(boardElevation) / 100, 0.7); // Увеличиваем влияние подъема
-      scrollSpeed = this.baseSpeed * Math.min(this.speedMultiplier, 3.0); // Позволяем большую максимальную скорость
+      scrollSpeed = Math.min(scrollSpeed, this.baseSpeed * Math.min(this.speedMultiplier, 3.0)); // Позволяем большую максимальную скорость
       
       // Обновляем смещение viewport только если палка двигается вверх
       const pixelDelta = scrollSpeed * deltaTime;
       this.viewportOffset += pixelDelta;
     } else {
       // Если палка не двигается вверх, скорость прокрутки = 0
-      this.speedMultiplier = 0;
+      this.speedMultiplier = Math.max(0, this.speedMultiplier - deltaTime * 0.5); // Плавное уменьшение скорости
     }
     
     // Обновляем счётчик метров с десятыми долями
     this.heightInMeters = this.viewportOffset / this.pixelsPerMeter;
     
-    // Адаптивная сложность - уменьшаем расстояние между платформами с высотой более плавно
-    // Используем логарифмическую зависимость для более сбалансированной сложности
-    const logFactor = Math.log(1 + this.heightInMeters / 100) / Math.log(10);
-    this.minPlatformSpacing = Math.max(70, 120 - logFactor * 50);
-    this.maxPlatformSpacing = Math.max(120, 220 - logFactor * 100);
-    
-    // Временный массив для активных платформ
-    const activePlatforms: Platform[] = [];
-    
-    // Перемещаем все существующие платформы и фильтруем те, которые ушли далеко за пределы экрана
-    for (const platform of this.platforms) {
-      const screenY = platform.position.y - this.viewportOffset;
-      
-      // Если платформа слишком далеко ушла вниз или вверх, пропускаем её
-      // Расширяем диапазон видимости с запасом
-      if (screenY >= -this.viewportHeight && screenY <= this.viewportHeight * 2) {
-        // Переиспользуем объект из пула
-        const reusedPlatform = this.getPlatformFromPool(
-          platform.position.x,
-          platform.position.y,
-          platform.radius
-        );
-        // Сохраняем цвет платформы
-        reusedPlatform.color = platform.color;
-        activePlatforms.push(reusedPlatform);
-        
-        // Если достигли лимита видимых платформ, прекращаем добавление
-        if (activePlatforms.length >= this.maxVisiblePlatforms) {
-          break;
-        }
-      }
-    }
-    
-    // Заменяем массив платформ только активными
-    this.platforms = activePlatforms;
-    
-    // Проверяем, нужно ли генерировать новые платформы вверху
-    const highestPlatformY = this.lastPlatformY - this.viewportOffset;
-    
-    // Также найдем самую нижнюю платформу в видимой области
-    let lowestVisibleY = this.viewportHeight * 3; // Начальное значение достаточно большое
-    
-    // Находим самую нижнюю платформу
-    for (const platform of this.platforms) {
-      if (platform.position.y < lowestVisibleY) {
-        lowestVisibleY = platform.position.y;
-      }
-    }
-    
-    // Генерируем новые платформы вверх, если верхняя часть приближается к видимой области
-    // Добавим платформы, только если у нас меньше максимального количества платформ
-    if (highestPlatformY > 0 && this.platforms.length < this.maxVisiblePlatforms) {
-      const newY = this.lastPlatformY - this.getRandomSpacing();
-      this.spawnPlatformRow(newY);
-      
-      // Проверяем, нужно ли создать новый проход для следующего сегмента
-      const segmentIndex = Math.floor(newY / this.segmentHeight);
-      const segmentY = segmentIndex * this.segmentHeight;
-      
-      // Если новый ряд находится в начале нового сегмента, создаем проход для этого сегмента
-      if (newY < segmentY + this.segmentHeight / 2 && newY > segmentY) {
-        this.createPathway(segmentIndex);
-      }
-    }
-    
-    // Генерируем новые платформы внизу, если нижняя часть видимой области нуждается в платформах
-    const bottomScreenY = this.viewportHeight + this.viewportOffset;
-    const bottomVisibleY = lowestVisibleY - this.viewportOffset;
-    
-    // Если самая нижняя платформа находится выше нижней границы экрана + запас
-    if (bottomVisibleY < this.viewportHeight * 0.9 && this.platforms.length < this.maxVisiblePlatforms) {
-      // Генерируем несколько платформ внизу
-      const startY = lowestVisibleY > 0 ? lowestVisibleY + this.getRandomSpacing() : this.viewportHeight;
-      
-      // Генерируем до трех рядов платформ вниз
-      let currentY = startY;
-      for (let i = 0; i < 3 && this.platforms.length < this.maxVisiblePlatforms; i++) {
-        this.spawnPlatformRow(currentY);
-        currentY += this.getRandomSpacing();
-        
-        // Если ушли слишком далеко вниз, останавливаемся
-        if (currentY - this.viewportOffset > this.viewportHeight * 2) {
-          break;
-        }
-      }
+    // Обновляем генератор уровней, основанный на аркадном автомате
+    if (this.endlessGenerator) {
+      this.endlessGenerator.updateSegments(this.viewportOffset, this.viewportHeight);
     }
   }
 
   // Отрисовка всех элементов бесконечного режима
   public render(ctx: CanvasRenderingContext2D): void {
-    // Отрисовываем платформы
-    for (const platform of this.platforms) {
-      // Вычисляем экранную позицию с учетом смещения viewport
-      const screenY = platform.position.y - this.viewportOffset;
-      
-      // Отрисовываем только то, что в зоне видимости (с небольшим запасом)
-      if (screenY >= -platform.radius && screenY <= this.viewportHeight + platform.radius) {
-        ctx.fillStyle = platform.color;
-        ctx.beginPath();
-        ctx.arc(platform.position.x, screenY, platform.radius, 0, Math.PI * 2);
-        ctx.fill();
-      }
+    // Отрисовываем препятствия с новым генератором
+    if (this.endlessGenerator) {
+      this.endlessGenerator.render(ctx, this.viewportOffset);
     }
     
     // Отрисовываем счетчик метров
     this.drawMeters(ctx);
-    
-    // Отрисовываем фоновые линии для визуального ощущения движения
-    this.drawBackgroundLines(ctx);
     
     // Отображаем показатель скорости
     // Индикатор скорости в виде полосы, размер которой зависит от скорости
@@ -317,62 +146,12 @@ export class EndlessMode {
     ctx.fillText(`Скорость: ${this.speedMultiplier.toFixed(1)}x`, 20, 60);
   }
 
-  // Отрисовка фоновых линий для визуального ощущения движения - оптимизированная версия
-  private drawBackgroundLines(ctx: CanvasRenderingContext2D): void {
-    ctx.strokeStyle = "rgba(255, 255, 255, 0.2)";
-    ctx.lineWidth = 1;
-    
-    // Рисуем горизонтальные линии через равные промежутки
-    const lineSpacing = 100; // Увеличено расстояние с 50 до 100 пикселей
-    
-    // Вычисляем, какая линия должна быть внизу экрана
-    const bottomLineY = Math.ceil(this.viewportOffset / lineSpacing) * lineSpacing;
-    
-    // Рисуем только 8 линий вместо всех возможных
-    const maxLines = 8;
-    
-    for (let i = 0; i < maxLines; i++) {
-      const y = bottomLineY - i * lineSpacing;
-      const screenY = y - this.viewportOffset;
-      
-      // Если линия видна на экране
-      if (screenY >= 0 && screenY <= this.viewportHeight) {
-        ctx.beginPath();
-        ctx.moveTo(0, screenY);
-        ctx.lineTo(this.viewportWidth, screenY);
-        ctx.stroke();
-        
-        // Отмечаем каждые 100 пикселей (1 метр) значением - только для линий, кратных 500
-        if (y % 500 === 0) {
-          const meters = y / this.pixelsPerMeter;
-          ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
-          ctx.font = "12px Arial";
-          ctx.textAlign = "left";
-          ctx.fillText(`${meters}m`, 10, screenY - 5);
-        }
-      }
-    }
-  }
-
-  // Проверка столкновения шарика с платформами
+  // Проверка столкновения шарика с препятствиями
   public checkCollision(ballPosition: Vector2D, ballRadius: number): boolean {
-    // Применяем смещение к позиции шарика для корректной проверки
-    const adjustedBallY = ballPosition.y + this.viewportOffset;
-    
-    for (const platform of this.platforms) {
-      const distance = Vector2D.distance(
-        new Vector2D(ballPosition.x, adjustedBallY),
-        platform.position
-      );
-      
-      // Если расстояние меньше суммы радиусов, произошло столкновение
-      // Уменьшаем погрешность с 0.7 до 0.65 для более точного определения столкновений
-      if (distance < platform.radius + ballRadius * 0.65) {
-        return true; // Столкновение произошло
-      }
+    if (this.endlessGenerator) {
+      return this.endlessGenerator.checkObstacleCollision(ballPosition, ballRadius, this.viewportOffset);
     }
-    
-    return false; // Столкновений нет
+    return false;
   }
 
   // Получение текущей высоты в метрах
@@ -387,7 +166,7 @@ export class EndlessMode {
 
   // Сброс бесконечного режима
   public reset(): void {
-    this.platforms = []; // Очищаем все платформы
+    this.platforms = []; // Очищаем старые платформы для совместимости
     this.poolIndex = 0; // Сбрасываем индекс пула
     
     // Сбрасываем базовые параметры
@@ -395,8 +174,12 @@ export class EndlessMode {
     this.heightInMeters = 0;
     this.lastPlatformY = this.viewportHeight;
     
-    // Генерируем новые начальные платформы
-    this.generateInitialPlatforms();
+    // Сбрасываем генератор уровней
+    if (this.endlessGenerator) {
+      this.endlessGenerator.reset();
+      this.endlessGenerator.generateInitialSegment();
+    }
+    
     this.isPaused = false;
   }
   
@@ -405,5 +188,10 @@ export class EndlessMode {
     this.platforms = [];
     this.platformPool = [];
     this.poolIndex = 0;
+    
+    // Освобождаем ресурсы генератора
+    if (this.endlessGenerator) {
+      this.endlessGenerator = null;
+    }
   }
 }
