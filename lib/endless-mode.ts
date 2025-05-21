@@ -84,9 +84,23 @@ export class EndlessMode {
     this.heightInMeters = 0;
     this.lastPlatformY = this.viewportHeight;
 
-    // Генерируем платформы только на 1 экран вперед (вместо 2)
-    for (let y = this.viewportHeight; y > 0; y -= this.getRandomSpacing()) {
+    // Генерируем платформы на весь экран по высоте
+    for (let y = this.viewportHeight; y >= 0; y -= this.getRandomSpacing()) {
       this.spawnPlatformRow(y);
+    }
+    
+    // Генерируем и платформы выше экрана для начального запаса
+    let topY = -this.getRandomSpacing();
+    for (let i = 0; i < 5; i++) {
+      this.spawnPlatformRow(topY);
+      topY -= this.getRandomSpacing();
+    }
+    
+    // Генерируем платформы ниже экрана для начального ряда
+    let bottomY = this.viewportHeight + this.getRandomSpacing();
+    for (let i = 0; i < 10; i++) { // Больше платформ внизу, чтобы они были видны сразу
+      this.spawnPlatformRow(bottomY);
+      bottomY += this.getRandomSpacing();
     }
   }
 
@@ -156,10 +170,13 @@ export class EndlessMode {
     // Временный массив для активных платформ
     const activePlatforms: Platform[] = [];
     
-    // Перемещаем все существующие платформы и фильтруем те, которые ушли за пределы экрана
+    // Перемещаем все существующие платформы и фильтруем те, которые ушли далеко за пределы экрана
     for (const platform of this.platforms) {
-      // Если платформа все еще в зоне видимости (с запасом в один экран вниз)
-      if (platform.position.y - this.viewportOffset < this.viewportHeight + this.platformRadius) {
+      const screenY = platform.position.y - this.viewportOffset;
+      
+      // Если платформа слишком далеко ушла вниз или вверх, пропускаем её
+      // Расширяем диапазон видимости с запасом
+      if (screenY >= -this.viewportHeight && screenY <= this.viewportHeight * 2) {
         // Переиспользуем объект из пула
         const reusedPlatform = this.getPlatformFromPool(
           platform.position.x,
@@ -178,14 +195,46 @@ export class EndlessMode {
     // Заменяем массив платформ только активными
     this.platforms = activePlatforms;
     
-    // Проверяем, нужно ли генерировать новые платформы
-    const highestVisibleY = this.lastPlatformY - this.viewportOffset;
+    // Проверяем, нужно ли генерировать новые платформы вверху
+    const highestPlatformY = this.lastPlatformY - this.viewportOffset;
     
-    // Генерируем новые платформы, если верхняя часть видимой области приближается к последней платформе
-    // Генерируем только если у нас меньше максимального количества платформ
-    if (highestVisibleY > 0 && this.platforms.length < this.maxVisiblePlatforms) {
+    // Также найдем самую нижнюю платформу в видимой области
+    let lowestVisibleY = this.viewportHeight * 3; // Начальное значение достаточно большое
+    
+    // Находим самую нижнюю платформу
+    for (const platform of this.platforms) {
+      if (platform.position.y < lowestVisibleY) {
+        lowestVisibleY = platform.position.y;
+      }
+    }
+    
+    // Генерируем новые платформы вверх, если верхняя часть приближается к видимой области
+    // Добавим платформы, только если у нас меньше максимального количества платформ
+    if (highestPlatformY > 0 && this.platforms.length < this.maxVisiblePlatforms) {
       const newY = this.lastPlatformY - this.getRandomSpacing();
       this.spawnPlatformRow(newY);
+    }
+    
+    // Генерируем новые платформы внизу, если нижняя часть видимой области нуждается в платформах
+    const bottomScreenY = this.viewportHeight + this.viewportOffset;
+    const bottomVisibleY = lowestVisibleY - this.viewportOffset;
+    
+    // Если самая нижняя платформа находится выше нижней границы экрана + запас
+    if (bottomVisibleY < this.viewportHeight * 0.9 && this.platforms.length < this.maxVisiblePlatforms) {
+      // Генерируем несколько платформ внизу
+      const startY = lowestVisibleY > 0 ? lowestVisibleY + this.getRandomSpacing() : this.viewportHeight;
+      
+      // Генерируем до трех рядов платформ вниз
+      let currentY = startY;
+      for (let i = 0; i < 3 && this.platforms.length < this.maxVisiblePlatforms; i++) {
+        this.spawnPlatformRow(currentY);
+        currentY += this.getRandomSpacing();
+        
+        // Если ушли слишком далеко вниз, останавливаемся
+        if (currentY - this.viewportOffset > this.viewportHeight * 2) {
+          break;
+        }
+      }
     }
   }
 

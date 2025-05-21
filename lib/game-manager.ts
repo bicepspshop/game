@@ -315,6 +315,11 @@ export class GameManager {
 
     // Проверяем шарик
     if (this.ball) {
+      // В бесконечном режиме нужно двигать мяч вместе с экраном (только для старого режима)
+      if (this.isEndlessMode && !this.endlessMode) {
+        this.ball.position.y += this.scrollSpeed * deltaTime;
+      }
+      
       // Проверка выпадения шарика с доски
       if (this.isBallOffBoard()) {
         this.handleGameOver()
