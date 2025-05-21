@@ -8,6 +8,77 @@ import Joystick from "@/components/joystick"
 import GameMenu from "@/components/game-menu"
 import { HomeIcon, RefreshCwIcon as RefreshIcon, ArrowUpIcon } from "lucide-react"
 
+// Интерфейс для прогресса игры
+interface GameProgress {
+  currentLevel: number;
+  maxUnlocked: number[];
+  highScore: number;
+  endlessHighScore: number;
+}
+
+// Ключ для хранения прогресса игры в localStorage
+const GAME_PROGRESS_KEY = "gameProgress";
+const GAME_VERSION_KEY = "gameVersion";
+const CURRENT_GAME_VERSION = "1.0";
+
+// Вспомогательные функции для работы с прогрессом
+const getDefaultProgress = (): GameProgress => ({
+  currentLevel: 1,
+  maxUnlocked: [1],
+  highScore: 0,
+  endlessHighScore: 0
+});
+
+const loadGameProgress = (): GameProgress => {
+  try {
+    // Проверяем версию игры для возможной миграции данных
+    const savedVersion = localStorage.getItem(GAME_VERSION_KEY);
+    if (savedVersion !== CURRENT_GAME_VERSION) {
+      // Если версии не совпадают, обновляем версию
+      localStorage.setItem(GAME_VERSION_KEY, CURRENT_GAME_VERSION);
+      // При необходимости здесь можно добавить миграцию данных
+    }
+
+    const savedData = localStorage.getItem(GAME_PROGRESS_KEY);
+    if (!savedData) return getDefaultProgress();
+    
+    const parsed = JSON.parse(savedData) as GameProgress;
+    
+    // Проверка корректности данных
+    if (typeof parsed.currentLevel !== 'number' || 
+        !Array.isArray(parsed.maxUnlocked) ||
+        typeof parsed.highScore !== 'number' ||
+        typeof parsed.endlessHighScore !== 'number') {
+      console.warn("Corrupted game progress data, using defaults");
+      return getDefaultProgress();
+    }
+    
+    return parsed;
+  } catch (e) {
+    console.error("Error loading game progress:", e);
+    return getDefaultProgress();
+  }
+};
+
+const saveGameProgress = (progress: GameProgress): void => {
+  try {
+    localStorage.setItem(GAME_PROGRESS_KEY, JSON.stringify(progress));
+  } catch (e) {
+    console.error("Error saving game progress:", e);
+  }
+};
+
+// Функция для проверки URL-параметров (для режима разработчика)
+const getUrlParams = () => {
+  if (typeof window === 'undefined') return {};
+  
+  const params = new URLSearchParams(window.location.search);
+  return {
+    levelParam: params.get('level') ? parseInt(params.get('level') as string, 10) : null,
+    noCache: params.get('nocache') === 'true'
+  };
+};
+
 export default function IceColdBeer() {
   const canvasRef = useRef<HTMLCanvasElement>(null)
   const gameRef = useRef<GameManager | null>(null)
@@ -23,6 +94,8 @@ export default function IceColdBeer() {
   const [gameInitialized, setGameInitialized] = useState(false)
   const [restartTrigger, setRestartTrigger] = useState(0)
   const [isEndlessMode, setIsEndlessMode] = useState(false)
+  // Сохраняем последний уровень при Game Over для использования при перезапуске
+  const [lastPlayedLevel, setLastPlayedLevel] = useState(1)
 
   const { leftInput, rightInput, leftVerticalInput, rightVerticalInput } = useKeyboardControls()
   const { leftTouchInput, rightTouchInput, leftTouchVerticalInput, rightTouchVerticalInput } = useTouchControls()
@@ -33,118 +106,148 @@ export default function IceColdBeer() {
   const combinedLeftVerticalInput = leftVerticalInput + leftTouchVerticalInput
   const combinedRightVerticalInput = rightVerticalInput + rightTouchVerticalInput
 
-  // Load high score and unlocked levels from localStorage
+  // Load game progress from localStorage
   useEffect(() => {
-    const savedHighScore = localStorage.getItem("highScore")
-    if (savedHighScore) {
-      setHighScore(Number.parseInt(savedHighScore, 10))
+    const { levelParam, noCache } = getUrlParams();
+    
+    // Используем URL-параметры для отладки, если они есть
+    if (levelParam && !noCache) {
+      setLevel(levelParam);
+      setLastPlayedLevel(levelParam);
     }
-
-    const savedEndlessHighScore = localStorage.getItem("endlessHighScore")
-    if (savedEndlessHighScore) {
-      // Используем parseFloat вместо parseInt для поддержки десятичных значений
-      setEndlessHighScore(Number.parseFloat(savedEndlessHighScore))
-    }
-
-    const savedUnlockedLevels = localStorage.getItem("unlockedLevels")
-    if (savedUnlockedLevels) {
-      try {
-        const parsed = JSON.parse(savedUnlockedLevels)
-        if (Array.isArray(parsed)) {
-          setUnlockedLevels(parsed)
-        }
-      } catch (e) {
-        console.error("Error parsing unlocked levels:", e)
-      }
-    }
-  }, [])
+    
+    // Если указан параметр nocache, не загружаем сохраненный прогресс
+    if (noCache) return;
+    
+    // Загружаем сохраненный прогресс
+    const progress = loadGameProgress();
+    
+    setLevel(progress.currentLevel);
+    setLastPlayedLevel(progress.currentLevel);
+    setUnlockedLevels(progress.maxUnlocked);
+    setHighScore(progress.highScore);
+    setEndlessHighScore(progress.endlessHighScore);
+    
+  }, []);
 
   // Update high score when score changes
   useEffect(() => {
     if (!isEndlessMode && score > highScore) {
-      setHighScore(score)
-      localStorage.setItem("highScore", score.toString())
+      setHighScore(score);
+      
+      // Обновляем сохраненный прогресс
+      const progress = loadGameProgress();
+      progress.highScore = score;
+      saveGameProgress(progress);
     }
-  }, [score, highScore, isEndlessMode])
+  }, [score, highScore, isEndlessMode]);
 
   // Update endless high score when meters changes
   useEffect(() => {
     if (isEndlessMode && meters > endlessHighScore) {
-      setEndlessHighScore(meters)
-      localStorage.setItem("endlessHighScore", meters.toString())
+      setEndlessHighScore(meters);
+      
+      // Обновляем сохраненный прогресс
+      const progress = loadGameProgress();
+      progress.endlessHighScore = meters;
+      saveGameProgress(progress);
     }
-  }, [meters, endlessHighScore, isEndlessMode])
+  }, [meters, endlessHighScore, isEndlessMode]);
 
-  // Update unlocked levels when level changes
+  // Update unlocked levels and current level when level changes
   useEffect(() => {
     if (level > 1 && !unlockedLevels.includes(level)) {
-      const newUnlockedLevels = [...unlockedLevels, level]
-      setUnlockedLevels(newUnlockedLevels)
-      localStorage.setItem("unlockedLevels", JSON.stringify(newUnlockedLevels))
+      const newUnlockedLevels = [...unlockedLevels, level];
+      setUnlockedLevels(newUnlockedLevels);
+      
+      // Обновляем сохраненный прогресс
+      const progress = loadGameProgress();
+      progress.maxUnlocked = newUnlockedLevels;
+      progress.currentLevel = level;
+      saveGameProgress(progress);
+    } else if (level !== 1) {
+      // Если уровень изменился, но он уже разблокирован, 
+      // всё равно обновляем текущий уровень в прогрессе
+      const progress = loadGameProgress();
+      progress.currentLevel = level;
+      saveGameProgress(progress);
     }
-  }, [level, unlockedLevels])
+    
+    // Обновляем lastPlayedLevel при изменении уровня
+    setLastPlayedLevel(level);
+  }, [level, unlockedLevels]);
+
+  // Обработчик события Game Over
+  useEffect(() => {
+    if (gameOver && !isEndlessMode) {
+      // Сохраняем последний уровень при Game Over
+      setLastPlayedLevel(level);
+    }
+  }, [gameOver, level, isEndlessMode]);
 
   // Полностью пересоздаем игру при перезапуске
   useEffect(() => {
     if (restartTrigger > 0 && !showMenu && canvasRef.current) {
-      console.log("Reinitializing game after restart...")
+      console.log("Reinitializing game after restart...");
+      console.log("Restarting at level:", lastPlayedLevel);
 
       // Уничтожаем текущую игру
       if (gameRef.current) {
-        gameRef.current.destroy()
-        gameRef.current = null
+        gameRef.current.destroy();
+        gameRef.current = null;
       }
 
       // Сбрасываем состояние игры
-      setGameInitialized(false)
+      setGameInitialized(false);
 
       // Небольшая задержка перед пересозданием игры
       setTimeout(() => {
         try {
-          // Инициализируем игру заново
-          const canvas = canvasRef.current
+          // Инициализируем игру заново c текущим уровнем, а не с первого
+          const canvas = canvasRef.current;
           if (canvas) {
             const game = new GameManager(
               canvas,
               {
                 onScoreChange: (newScore) => {
-                  console.log(`Score updated: ${newScore}`)
-                  setScore(newScore)
+                  console.log(`Score updated: ${newScore}`);
+                  setScore(newScore);
                 },
                 onLevelChange: (newLevel) => {
-                  console.log(`Level updated: ${newLevel}`)
-                  setLevel(newLevel)
+                  console.log(`Level updated: ${newLevel}`);
+                  setLevel(newLevel);
                 },
                 onMetersChange: (newMeters) => {
-                  console.log(`Meters updated: ${newMeters}`)
-                  setMeters(newMeters)
+                  console.log(`Meters updated: ${newMeters}`);
+                  setMeters(newMeters);
                 },
                 onGameOver: () => {
-                  console.log("Game over triggered")
-                  setGameOver(true)
+                  console.log("Game over triggered");
+                  setGameOver(true);
                 },
               },
-              1, // Всегда начинаем с первого уровня при перезапуске
+              lastPlayedLevel, // Используем сохраненный уровень вместо фиксированного 1
               isEndlessMode,
-            )
+            );
 
-            gameRef.current = game
-            game.start()
-            setGameInitialized(true)
-            console.log("Game reinitialized successfully")
+            gameRef.current = game;
+            game.start();
+            setGameInitialized(true);
+            console.log("Game reinitialized successfully at level:", lastPlayedLevel);
           }
         } catch (error) {
-          console.error("Error reinitializing game:", error)
+          console.error("Error reinitializing game:", error);
         }
-      }, 100)
+      }, 100);
     }
-  }, [restartTrigger, showMenu, isEndlessMode])
+  }, [restartTrigger, showMenu, isEndlessMode, lastPlayedLevel]);
 
   // Initialize game when canvas is available and showMenu is false
   useEffect(() => {
     // Только инициализируем, если не показываем меню, canvas доступен и это не перезапуск
     if (!showMenu && canvasRef.current && !gameInitialized && restartTrigger === 0) {
-      console.log("Initializing game for the first time...")
+      console.log("Initializing game for the first time...");
+      console.log("Starting at level:", level);
 
       // Reset inputs
       useKeyboardControls.setState({
@@ -152,66 +255,66 @@ export default function IceColdBeer() {
         rightInput: 0,
         leftVerticalInput: 0,
         rightVerticalInput: 0,
-      })
+      });
       useTouchControls.setState({
         leftTouchInput: 0,
         rightTouchInput: 0,
         leftTouchVerticalInput: 0,
         rightTouchVerticalInput: 0,
-      })
+      });
 
       // Clean up any existing game
       if (gameRef.current) {
-        gameRef.current.destroy()
-        gameRef.current = null
+        gameRef.current.destroy();
+        gameRef.current = null;
       }
 
       try {
         // Initialize the game
-        const canvas = canvasRef.current
+        const canvas = canvasRef.current;
         const game = new GameManager(
           canvas,
           {
             onScoreChange: (newScore) => {
-              console.log(`Score updated: ${newScore}`)
-              setScore(newScore)
+              console.log(`Score updated: ${newScore}`);
+              setScore(newScore);
             },
             onLevelChange: (newLevel) => {
-              console.log(`Level updated: ${newLevel}`)
-              setLevel(newLevel)
+              console.log(`Level updated: ${newLevel}`);
+              setLevel(newLevel);
             },
             onMetersChange: (newMeters) => {
-              console.log(`Meters updated: ${newMeters}`)
-              setMeters(newMeters)
+              console.log(`Meters updated: ${newMeters}`);
+              setMeters(newMeters);
             },
             onGameOver: () => {
-              console.log("Game over triggered")
-              setGameOver(true)
+              console.log("Game over triggered");
+              setGameOver(true);
             },
           },
           level,
           isEndlessMode,
-        )
+        );
 
-        gameRef.current = game
-        game.start()
-        setGameInitialized(true)
-        console.log("Game initialized successfully")
+        gameRef.current = game;
+        game.start();
+        setGameInitialized(true);
+        console.log("Game initialized successfully");
       } catch (error) {
-        console.error("Error initializing game:", error)
+        console.error("Error initializing game:", error);
       }
     }
 
     // Clean up when component unmounts or when returning to menu
     return () => {
       if (gameRef.current && showMenu) {
-        console.log("Destroying game...")
-        gameRef.current.destroy()
-        gameRef.current = null
-        setGameInitialized(false)
+        console.log("Destroying game...");
+        gameRef.current.destroy();
+        gameRef.current = null;
+        setGameInitialized(false);
       }
-    }
-  }, [showMenu, level, gameInitialized, restartTrigger, isEndlessMode])
+    };
+  }, [showMenu, level, gameInitialized, restartTrigger, isEndlessMode]);
 
   // Update game inputs when they change
   useEffect(() => {
@@ -221,7 +324,7 @@ export default function IceColdBeer() {
         combinedRightInput,
         combinedLeftVerticalInput,
         combinedRightVerticalInput,
-      )
+      );
     }
   }, [
     combinedLeftInput,
@@ -230,10 +333,10 @@ export default function IceColdBeer() {
     combinedRightVerticalInput,
     showMenu,
     gameInitialized,
-  ])
+  ]);
 
   const startGame = (startLevel = 1) => {
-    console.log("Starting game at level:", startLevel)
+    console.log("Starting game at level:", startLevel);
     
     // Сначала уничтожим существующую игру, если она есть
     if (gameRef.current) {
@@ -242,28 +345,34 @@ export default function IceColdBeer() {
     }
     
     // Сбрасываем состояние игры
-    setLevel(startLevel)
-    setScore(0)
-    setMeters(0)
-    setGameOver(false)
-    setGameInitialized(false)
+    setLevel(startLevel);
+    setLastPlayedLevel(startLevel); // Обновляем последний уровень
+    setScore(0);
+    setMeters(0);
+    setGameOver(false);
+    setGameInitialized(false);
     
     try {
       // Убедимся, что мы не в бесконечном режиме
-      setIsEndlessMode(false)
+      setIsEndlessMode(false);
+      
+      // Обновляем текущий уровень в сохраненном прогрессе
+      const progress = loadGameProgress();
+      progress.currentLevel = startLevel;
+      saveGameProgress(progress);
       
       // Даем React время обновить состояние, затем показываем игровой экран
       setTimeout(() => {
-        setShowMenu(false)
+        setShowMenu(false);
       }, 100);
     } catch (error) {
       console.error("Error starting game:", error);
       // В случае ошибки остаемся в меню
     }
-  }
+  };
 
   const startEndlessMode = () => {
-    console.log("Starting endless mode")
+    console.log("Starting endless mode");
     
     // Сначала уничтожим существующую игру, если она есть
     if (gameRef.current) {
@@ -272,29 +381,31 @@ export default function IceColdBeer() {
     }
     
     // Сбрасываем состояние игры
-    setLevel(1)
-    setScore(0)
-    setMeters(0)
-    setGameOver(false)
-    setGameInitialized(false)
+    setLevel(1);
+    setLastPlayedLevel(1);
+    setScore(0);
+    setMeters(0);
+    setGameOver(false);
+    setGameInitialized(false);
     
     try {
       // Сначала включаем флаг бесконечного режима
-      setIsEndlessMode(true)
+      setIsEndlessMode(true);
       
       // Даем React время обновить состояние, затем показываем игровой экран
       setTimeout(() => {
-        setShowMenu(false)
+        setShowMenu(false);
       }, 100);
     } catch (error) {
       console.error("Error starting endless mode:", error);
       // В случае ошибки остаемся в меню
       setIsEndlessMode(false);
     }
-  }
+  };
 
   const handleRestart = () => {
-    console.log("Restarting game...")
+    console.log("Restarting game...");
+    console.log("Last played level:", lastPlayedLevel);
     
     try {
       // Уничтожаем текущую игру
@@ -303,32 +414,34 @@ export default function IceColdBeer() {
         gameRef.current = null;
       }
       
-      // Сбрасываем состояния игры
-      setScore(0)
-      setLevel(1)
-      setMeters(0)
-      setGameOver(false)
-      setGameInitialized(false)
+      // Сбрасываем состояния игры, но сохраняем текущий уровень
+      setScore(0);
+      setMeters(0);
+      setGameOver(false);
+      setGameInitialized(false);
 
+      // Сохраняем тот же уровень, на котором игрок проиграл
+      // (lastPlayedLevel уже установлен в обработчике gameOver)
+      
       // Используем триггер для полного пересоздания игры
-      setRestartTrigger((prev) => prev + 1)
+      setRestartTrigger((prev) => prev + 1);
     } catch (error) {
       console.error("Error restarting game:", error);
       // В случае ошибки вернемся в меню
       setShowMenu(true);
     }
-  }
+  };
 
   const handleBackToMenu = () => {
-    console.log("Going back to menu...")
+    console.log("Going back to menu...");
     try {
       // Явно уничтожаем игру перед возвратом в меню
       if (gameRef.current) {
-        gameRef.current.destroy()
-        gameRef.current = null
+        gameRef.current.destroy();
+        gameRef.current = null;
       }
       // Очищаем все состояния, которые могут содержать ссылки на объекты
-      setGameInitialized(false)
+      setGameInitialized(false);
       
       // Может помочь сборщику мусора освободить память
       setTimeout(() => {
@@ -340,21 +453,21 @@ export default function IceColdBeer() {
       // В случае ошибки всё равно возвращаемся в меню
       setShowMenu(true);
     }
-  }
+  };
 
   const handleLeftJoystickMove = (x: number, y: number) => {
     useTouchControls.setState({
       leftTouchInput: -x, // Invert x for intuitive control
       leftTouchVerticalInput: -y, // Invert y for intuitive control
-    })
-  }
+    });
+  };
 
   const handleRightJoystickMove = (x: number, y: number) => {
     useTouchControls.setState({
       rightTouchInput: -x, // Invert x for intuitive control
       rightTouchVerticalInput: -y, // Invert y for intuitive control
-    })
-  }
+    });
+  };
 
   const handleJoystickEnd = () => {
     useTouchControls.setState({
@@ -362,10 +475,24 @@ export default function IceColdBeer() {
       rightTouchInput: 0,
       leftTouchVerticalInput: 0,
       rightTouchVerticalInput: 0,
-    })
-  }
+    });
+  };
+
+  // Добавим функцию для очистки кэша (для режима разработчика)
+  const clearProgressCache = () => {
+    try {
+      localStorage.removeItem(GAME_PROGRESS_KEY);
+      localStorage.removeItem(GAME_VERSION_KEY);
+      window.location.reload();
+    } catch (e) {
+      console.error("Error clearing game progress:", e);
+    }
+  };
 
   if (showMenu) {
+    // Проверяем URL-параметры для режима разработчика
+    const { noCache } = getUrlParams();
+    
     return (
       <div className="flex min-h-screen flex-col items-center justify-center p-4 bg-gray-900">
         <GameMenu
@@ -375,13 +502,23 @@ export default function IceColdBeer() {
           endlessHighScore={endlessHighScore}
           unlockedLevels={unlockedLevels}
         />
+        
+        {/* Добавляем скрытую кнопку для разработчиков, если указан параметр nocache */}
+        {noCache && (
+          <button 
+            onClick={clearProgressCache}
+            className="mt-4 text-xs text-gray-500 hover:text-gray-400"
+          >
+            Clear Cache (Dev Mode)
+          </button>
+        )}
       </div>
-    )
+    );
   }
 
   // Форматируем метры с одним десятичным знаком
-  const formattedMeters = meters.toFixed(1)
-  const formattedHighScore = endlessHighScore.toFixed(1)
+  const formattedMeters = meters.toFixed(1);
+  const formattedHighScore = endlessHighScore.toFixed(1);
 
   return (
     <div className="flex flex-col items-center">

@@ -1,7 +1,7 @@
 "use client"
 
-import { useState } from "react"
-import { PlayIcon, ListIcon, TrophyIcon, ArrowUpIcon } from "lucide-react"
+import { useState, useEffect } from "react"
+import { PlayIcon, ListIcon, TrophyIcon, ArrowUpIcon, FastForwardIcon } from "lucide-react"
 import LevelSelect from "./level-select"
 
 interface GameMenuProps {
@@ -12,6 +12,20 @@ interface GameMenuProps {
   unlockedLevels: number[]
 }
 
+// Функция для загрузки текущего уровня из localStorage
+const loadCurrentLevel = (): number => {
+  try {
+    const gameProgressStr = localStorage.getItem("gameProgress");
+    if (!gameProgressStr) return 1;
+    
+    const gameProgress = JSON.parse(gameProgressStr);
+    return gameProgress.currentLevel || 1;
+  } catch (e) {
+    console.error("Error loading current level:", e);
+    return 1;
+  }
+};
+
 export default function GameMenu({
   onStartGame,
   onStartEndlessMode,
@@ -19,7 +33,13 @@ export default function GameMenu({
   endlessHighScore,
   unlockedLevels,
 }: GameMenuProps) {
-  const [showLevelSelect, setShowLevelSelect] = useState(false)
+  const [showLevelSelect, setShowLevelSelect] = useState(false);
+  const [currentLevel, setCurrentLevel] = useState(1);
+  
+  // Загружаем текущий уровень при монтировании компонента
+  useEffect(() => {
+    setCurrentLevel(loadCurrentLevel());
+  }, []);
 
   if (showLevelSelect) {
     return (
@@ -29,6 +49,9 @@ export default function GameMenu({
 
   // Форматируем метры с одним десятичным знаком
   const formattedEndlessHighScore = endlessHighScore.toFixed(1)
+
+  // Определяем, нужно ли показывать кнопку продолжения игры
+  const showContinueButton = currentLevel > 1;
 
   return (
     <div className="flex flex-col items-center justify-center p-6 glass-panel rounded-xl shadow-neonglow max-w-md w-full">
@@ -51,16 +74,33 @@ export default function GameMenu({
               <span>Рекорд высоты: {formattedEndlessHighScore}м</span>
             </div>
           )}
+          
+          {showContinueButton && (
+            <div className="flex items-center justify-center gap-2 text-[#39FF14] text-glow-blue font-numbers">
+              <FastForwardIcon size={20} />
+              <span>Текущий уровень: {currentLevel}</span>
+            </div>
+          )}
         </div>
       </div>
 
       <div className="flex flex-col gap-4 w-full">
+        {showContinueButton && (
+          <button
+            onClick={() => onStartGame(currentLevel)}
+            className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#39FF14] to-[#F000FF] hover:brightness-110 text-white py-4 px-6 rounded-xl font-bold text-lg font-game transition-all play-btn w-full"
+          >
+            <FastForwardIcon size={24} />
+            Продолжить игру (Уровень {currentLevel})
+          </button>
+        )}
+
         <button
           onClick={() => onStartGame(1)}
           className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#4DEEEA] to-[#39FF14] hover:brightness-110 text-white py-4 px-6 rounded-xl font-bold text-lg font-game transition-all play-btn w-full"
         >
           <PlayIcon size={24} />
-          Начать игру
+          {showContinueButton ? "Начать с 1 уровня" : "Начать игру"}
         </button>
 
         <button
