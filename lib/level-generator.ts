@@ -55,8 +55,8 @@ export class LevelGenerator {
       name: "Вертикальные ворота",
       minLevel: 1,
       maxLevel: 7,
-      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
-        const points: Vector2[] = [];
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2D[] => {
+        const points: Vector2D[] = [];
         const gateWidth = width * 0.4;
         const gateHeight = height * 0.4;
         
@@ -85,8 +85,8 @@ export class LevelGenerator {
       name: "Диагональный каскад",
       minLevel: 4,
       maxLevel: 12,
-      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
-        const points: Vector2[] = [];
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2D[] => {
+        const points: Vector2D[] = [];
         const numHoles = 5 + Math.min(3, Math.floor((level - 4) / 3));
         
         // Направление меняется в зависимости от уровня
@@ -114,8 +114,8 @@ export class LevelGenerator {
       name: "Зигзагообразный коридор",
       minLevel: 8,
       maxLevel: 18,
-      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
-        const points: Vector2[] = [];
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2D[] => {
+        const points: Vector2D[] = [];
         const numZigs = 3 + Math.min(3, Math.floor((level - 8) / 3));
         
         const startX = width * 0.2;
@@ -149,10 +149,10 @@ export class LevelGenerator {
       name: "Защитный барьер",
       minLevel: 13,
       maxLevel: 25,
-      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2D[] => {
         const centerX = width / 2;
         const centerY = height * 0.35;
-        const points: Vector2[] = [];
+        const points: Vector2D[] = [];
         
         const radius = width * 0.15;
         const numHoles = 6 + Math.min(4, Math.floor((level - 13) / 2));
@@ -183,10 +183,10 @@ export class LevelGenerator {
       name: "Кольцевой кластер",
       minLevel: 19,
       maxLevel: 30,
-      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2[] => {
+      generateHoles: (width: number, height: number, level: number, holeRadius: number): Vector2D[] => {
         const centerX = width / 2;
         const centerY = height * 0.4;
-        const points: Vector2[] = [];
+        const points: Vector2D[] = [];
         
         const radius = width * 0.2 + (level - 19) * 2;
         const numHoles = 8 + Math.min(4, Math.floor((level - 19) / 2));
@@ -421,7 +421,7 @@ export class LevelGenerator {
   }
   
   // Создаем защитный барьер из серых лунок вокруг зеленой
-  private createProtectiveBarrier(targetHole: Hole, level: number, grayHoleRadius: number, barrierCount: number): void {
+  private createProtectiveBarrier(targetHole: Hole, level: number, holeRadius: number, barrierCount: number): void {
     // Количество лунок в барьере зависит от уровня
     const barrierHoles = Math.min(barrierCount, 8)
 
@@ -445,7 +445,7 @@ export class LevelGenerator {
 
       // Проверяем, что лунка находится в пределах игрового поля
       if (x >= this.minX && x <= this.maxX && y >= this.height * 0.1 && y <= this.height * 0.8) {
-        const hole = new Hole(new Vector2D(x, y), grayHoleRadius * 0.9, false) // Немного меньше обычных лунок
+        const hole = new Hole(new Vector2D(x, y), holeRadius * 0.9, false) // Немного меньше обычных лунок
         this.holes.push(hole)
       }
     }
@@ -466,7 +466,7 @@ export class LevelGenerator {
         const y = targetHole.position.y + Math.sin(randomAngle) * outerBarrierRadius
 
         if (x >= this.minX && x <= this.maxX && y >= this.height * 0.1 && y <= this.height * 0.8) {
-          const hole = new Hole(new Vector2D(x, y), grayHoleRadius * 0.85, false)
+          const hole = new Hole(new Vector2D(x, y), holeRadius * 0.85, false)
           this.holes.push(hole)
         }
       }
@@ -753,10 +753,9 @@ export class LevelGenerator {
       const distance = Vector2D.distance(ballPosition, hole.position)
 
       // Используем разные пороги для обычных и целевых лунок
-      // Для целевых лунок делаем более точное попадание
       const collisionThreshold = hole.isTarget
-        ? hole.radius + ballRadius * 0.3 // Уменьшено с 0.5 до 0.3 для большей сложности
-        : hole.radius - ballRadius * 0.3
+        ? hole.radius * 1.1  // Для зеленой лунки делаем больше область взаимодействия
+        : hole.radius - ballRadius * 0.3 // А для серых лунок шарик должен быть преимущественно внутри
 
       if (distance < collisionThreshold) {
         return i

@@ -1,0 +1,8 @@
+  // Получение информации о всех лунках
+  public getHoles(): { position: Vector2D; radius: number; isTarget: boolean }[] {
+    return this.holes.map(hole => ({
+      position: hole.position,
+      radius: hole.radius,
+      isTarget: hole.isTarget
+    }));
+  }

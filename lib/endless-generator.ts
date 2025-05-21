@@ -422,7 +422,9 @@ export class EndlessGenerator {
 
     for (const obstacle of visibleObstacles) {
       const distance = Vector2D.distance(ballPosition, obstacle.position)
-      const collisionThreshold = obstacle.radius + ballRadius * 0.7
+      // Делаем более точную проверку столкновений - нужно находиться внутри серой лунки
+      // Шарик должен войти достаточно глубоко в лунку для столкновения
+      const collisionThreshold = obstacle.radius - ballRadius * 0.5
 
       if (distance < collisionThreshold) {
         return true // Столкновение произошло

@@ -27,6 +27,7 @@ export class GameManager {
   private level = 1
   private meters = 0
   private targetHole = 0
+  private holes: { position: Vector2D; radius: number; isTarget: boolean }[] = [] // Храним информацию о лунках
   private animationFrameId: number | null = null
   private lastTimestamp = 0
   private callbacks: GameCallbacks
@@ -312,23 +313,31 @@ export class GameManager {
       const hitHole = this.levelGenerator.checkBallCollision(interpolatedPosition, this.ballRadius)
       if (hitHole !== null) {
         if (hitHole === this.targetHole) {
-          // Hit the target hole - добавляем очки в зависимости от уровня и сложности
-          // Увеличиваем награду за сложные уровни
-          const levelPoints = Math.floor(10 * this.level * (1 + this.level * 0.05))
-          this.score += levelPoints
-          this.level += 1
+          // Проверяем, достаточно ли шарик вошел в целевую лунку
+          const targetHole = this.holes[hitHole];
+          const distance = Vector2D.distance(interpolatedPosition, targetHole.position);
+          
+          // Шарик должен войти углубиться в целевую лунку, чтобы пройти уровень
+          if (distance < targetHole.radius - this.ballRadius * 0.7) {
+            // Hit the target hole - добавляем очки в зависимости от уровня и сложности
+            // Увеличиваем награду за сложные уровни
+            const levelPoints = Math.floor(10 * this.level * (1 + this.level * 0.05))
+            this.score += levelPoints
+            this.level += 1
 
-          console.log(`Level completed! Added ${levelPoints} points. New score: ${this.score}`)
+            console.log(`Level completed! Added ${levelPoints} points. New score: ${this.score}`)
 
-          this.callbacks.onScoreChange(this.score)
-          this.callbacks.onLevelChange(this.level)
+            this.callbacks.onScoreChange(this.score)
+            this.callbacks.onLevelChange(this.level)
 
-          // Reset the game state for the new level
-          this.resetGameState()
+            // Reset the game state for the new level
+            this.resetGameState()
 
-          // Generate new level
-          this.generateLevel()
-          return
+            // Generate new level
+            this.generateLevel()
+            return
+          }
+          // Если шарик не углубился достаточно, продолжаем игру
         } else {
           // Hit wrong hole
           this.handleGameOver()
@@ -362,11 +371,14 @@ export class GameManager {
 
     // Check if the ball is completely off the board in the rotated space
     // We add the ball radius to account for the ball's size
-    const isBallOffX = Math.abs(rotatedBallX) > boardHalfWidth + ballRadius
-    const isBallOffY = rotatedBallY > boardHalfHeight + ballRadius
+    const isBallOffX = Math.abs(rotatedBallX) > boardHalfWidth + ballRadius * 0.5 // Немного уменьшили порог для сложности
+    const isBallOffY = rotatedBallY > boardHalfHeight + ballRadius * 0.5 // Немного уменьшили порог для сложности
 
-    // Ball is off the board if it's either too far to the sides or below the board
-    return isBallOffX || isBallOffY || this.ball.position.y > this.canvas.height
+    // Проверяем, что шарик не ушел за верхнюю границу экрана
+    const isBallOffTop = this.ball.position.y < 0
+    
+    // Ball is off the board if it's either too far to the sides or below the board or above the screen
+    return isBallOffX || isBallOffY || this.ball.position.y > this.canvas.height || isBallOffTop
   }
 
   // Добавим метод для рендеринга звездного фона
@@ -575,9 +587,13 @@ export class GameManager {
     if (this.isEndlessMode) {
       // В бесконечном режиме используем класс EndlessMode
       // Генерация начальных платформ уже выполнена в конструкторе
+      this.holes = []; // Очищаем массив лунок в бесконечном режиме
     } else {
       // В обычном режиме генерируем новый уровень с гарантированной проходимостью
       this.targetHole = this.levelGenerator.generateLevel(this.level)
+      
+      // Получаем информацию о всех лунках для более точной проверки столкновений
+      this.holes = this.levelGenerator.getHoles();
     }
 
     // Create new ball

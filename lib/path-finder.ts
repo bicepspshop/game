@@ -1,356 +1,407 @@
-import { Vector2D } from "./physics";
+import { Vector2D } from "./physics"
 
-export interface GridNode {
-  x: number;
-  y: number;
-  f: number;
-  g: number;
-  h: number;
-  walkable: boolean;
-  parent: GridNode | null;
+// Тип для точки пути
+type PathNode = {
+  x: number
+  y: number
+  g: number // Стоимость пути от начальной точки
+  h: number // Эвристическая оценка до цели
+  f: number // Общая стоимость (g + h)
+  parent: PathNode | null
 }
 
-// Класс для создания и проверки сетки проходимости уровня
+// Тип для препятствия
+type Obstacle = {
+  position: Vector2D
+  radius: number
+  isTarget?: boolean
+}
+
 export class PathFinder {
-  private grid: GridNode[][];
-  private openSet: GridNode[];
-  private closedSet: GridNode[];
-  private gridSizeX: number;
-  private gridSizeY: number;
-  private cellSize: number;
+  private width: number
+  private height: number
+  private cellSize: number
+  private grid: boolean[][] = []
+  private obstacles: Obstacle[] = []
 
   constructor(width: number, height: number, cellSize: number) {
-    this.cellSize = cellSize;
-    this.gridSizeX = Math.ceil(width / cellSize);
-    this.gridSizeY = Math.ceil(height / cellSize);
-    this.grid = [];
-    this.openSet = [];
-    this.closedSet = [];
-    
-    // Инициализируем сетку проходимости
-    this.initGrid();
+    this.width = width
+    this.height = height
+    this.cellSize = cellSize
+
+    // Инициализация сетки
+    this.initGrid()
   }
-  
+
   // Инициализация сетки
   private initGrid(): void {
-    for (let y = 0; y < this.gridSizeY; y++) {
-      this.grid[y] = [];
-      for (let x = 0; x < this.gridSizeX; x++) {
-        this.grid[y][x] = {
-          x,
-          y,
-          f: 0,
-          g: 0,
-          h: 0,
-          walkable: true,
-          parent: null
-        };
-      }
-    }
+    const cols = Math.ceil(this.width / this.cellSize)
+    const rows = Math.ceil(this.height / this.cellSize)
+
+    this.grid = Array(rows)
+      .fill(0)
+      .map(() => Array(cols).fill(true))
   }
-  
-  // Обновление проходимости ячеек сетки на основе препятствий
-  public updateGrid(obstacles: Array<{position: Vector2D, radius: number}>): void {
-    // Сначала сбрасываем всю сетку
-    this.initGrid();
-    
-    // Затем отмечаем непроходимые ячейки
+
+  // Обновление сетки на основе препятствий
+  public updateGrid(obstacles: Obstacle[]): void {
+    this.obstacles = obstacles
+    this.initGrid() // Сбрасываем сетку
+
+    // Отмечаем ячейки с препятствиями
     for (const obstacle of obstacles) {
-      // Расширяем радиус препятствия для учета размера шарика
-      const safeRadius = obstacle.radius * 1.2;
-      
-      // Преобразуем координаты препятствия в ячейки сетки
-      const centerX = Math.floor(obstacle.position.x / this.cellSize);
-      const centerY = Math.floor(obstacle.position.y / this.cellSize);
-      
-      // Расчет радиуса в ячейках сетки
-      const cellRadius = Math.ceil(safeRadius / this.cellSize);
-      
-      // Отмечаем ячейки в пределах радиуса как непроходимые
-      for (let y = centerY - cellRadius; y <= centerY + cellRadius; y++) {
-        for (let x = centerX - cellRadius; x <= centerX + cellRadius; x++) {
-          if (y >= 0 && y < this.gridSizeY && x >= 0 && x < this.gridSizeX) {
-            // Проверяем расстояние от центра препятствия до центра ячейки
-            const dx = (x + 0.5) * this.cellSize - obstacle.position.x;
-            const dy = (y + 0.5) * this.cellSize - obstacle.position.y;
-            const distSq = dx * dx + dy * dy;
-            
-            if (distSq <= safeRadius * safeRadius) {
-              this.grid[y][x].walkable = false;
-            }
+      if (obstacle.isTarget) continue // Пропускаем целевую лунку
+
+      // Рассчитываем границы влияния препятствия
+      const minCol = Math.max(0, Math.floor((obstacle.position.x - obstacle.radius) / this.cellSize))
+      const maxCol = Math.min(
+        this.grid[0].length - 1,
+        Math.ceil((obstacle.position.x + obstacle.radius) / this.cellSize)
+      )
+      const minRow = Math.max(0, Math.floor((obstacle.position.y - obstacle.radius) / this.cellSize))
+      const maxRow = Math.min(
+        this.grid.length - 1,
+        Math.ceil((obstacle.position.y + obstacle.radius) / this.cellSize)
+      )
+
+      // Маркируем ячейки сетки, которые пересекаются с препятствием
+      for (let row = minRow; row <= maxRow; row++) {
+        for (let col = minCol; col <= maxCol; col++) {
+          const cellCenterX = (col + 0.5) * this.cellSize
+          const cellCenterY = (row + 0.5) * this.cellSize
+          const distance = Math.sqrt(
+            Math.pow(cellCenterX - obstacle.position.x, 2) + Math.pow(cellCenterY - obstacle.position.y, 2)
+          )
+
+          // Если центр ячейки внутри препятствия, отмечаем её как непроходимую
+          if (distance < obstacle.radius + this.cellSize / 2) {
+            this.grid[row][col] = false
           }
         }
       }
     }
   }
-  
-  // Эвристическая функция расстояния для A*
-  private heuristic(a: GridNode, b: GridNode): number {
-    // Манхэттенское расстояние
-    return Math.abs(a.x - b.x) + Math.abs(a.y - b.y);
+
+  // Функция для проверки коридора с заданной шириной
+  public validateCorridor(start: Vector2D, end: Vector2D, corridorWidth: number): boolean {
+    // Увеличиваем радиус для всех препятствий на половину требуемой ширины коридора
+    const inflatedObstacles = this.obstacles.map(o => {
+      if (o.isTarget) return o // Не изменяем целевую лунку
+      return {
+        position: o.position,
+        radius: o.radius + corridorWidth / 2,
+        isTarget: o.isTarget,
+      }
+    })
+
+    // Создаем временную копию сетки
+    const tempPathFinder = new PathFinder(this.width, this.height, this.cellSize)
+    tempPathFinder.updateGrid(inflatedObstacles)
+
+    // Ищем путь с раздутыми препятствиями
+    const path = tempPathFinder.findPath(start, end)
+    return path !== null && path.length > 0
   }
-  
-  // Алгоритм A* для поиска пути
-  public findPath(startPos: Vector2D, endPos: Vector2D): Vector2D[] | null {
-    this.openSet = [];
-    this.closedSet = [];
-    
-    // Преобразуем координаты в индексы сетки
-    const startX = Math.floor(startPos.x / this.cellSize);
-    const startY = Math.floor(startPos.y / this.cellSize);
-    const endX = Math.floor(endPos.x / this.cellSize);
-    const endY = Math.floor(endPos.y / this.cellSize);
-    
-    // Проверяем, что начальная и конечная точки находятся в пределах сетки
-    if (startX < 0 || startX >= this.gridSizeX || startY < 0 || startY >= this.gridSizeY ||
-        endX < 0 || endX >= this.gridSizeX || endY < 0 || endY >= this.gridSizeY) {
-      return null;
+
+  // Поиск пути от начальной точки до целевой
+  public findPath(start: Vector2D, end: Vector2D): Vector2D[] | null {
+    const startNode: PathNode = {
+      x: start.x,
+      y: start.y,
+      g: 0,
+      h: this.heuristic(start, end),
+      f: 0,
+      parent: null,
     }
-    
-    // Получаем узлы начала и конца
-    const startNode = this.grid[startY][startX];
-    const endNode = this.grid[endY][endX];
-    
-    // Проверяем, что начальный и конечный узлы проходимы
-    if (!startNode.walkable || !endNode.walkable) {
-      return null;
-    }
-    
-    // Инициализируем начальный узел
-    startNode.g = 0;
-    startNode.h = this.heuristic(startNode, endNode);
-    startNode.f = startNode.g + startNode.h;
-    
-    // Добавляем начальный узел в открытый список
-    this.openSet.push(startNode);
-    
-    // Направления движения (8 направлений)
-    const dirs = [
-      {x: 0, y: -1}, // вверх
-      {x: 1, y: -1}, // вверх-вправо
-      {x: 1, y: 0},  // вправо
-      {x: 1, y: 1},  // вниз-вправо
-      {x: 0, y: 1},  // вниз
-      {x: -1, y: 1}, // вниз-влево
-      {x: -1, y: 0}, // влево
-      {x: -1, y: -1} // вверх-влево
-    ];
-    
-    // Основной цикл A*
-    while (this.openSet.length > 0) {
-      // Находим узел с наименьшей оценкой f в открытом списке
-      let lowestIndex = 0;
-      for (let i = 0; i < this.openSet.length; i++) {
-        if (this.openSet[i].f < this.openSet[lowestIndex].f) {
-          lowestIndex = i;
+    startNode.f = startNode.g + startNode.h
+
+    const openSet: PathNode[] = [startNode]
+    const closedSet: Set<string> = new Set()
+
+    // Максимальное количество итераций для предотвращения бесконечного цикла
+    const maxIterations = 500
+    let iterations = 0
+
+    while (openSet.length > 0 && iterations < maxIterations) {
+      iterations++
+
+      // Находим узел с наименьшей общей стоимостью
+      let currentIndex = 0
+      for (let i = 1; i < openSet.length; i++) {
+        if (openSet[i].f < openSet[currentIndex].f) {
+          currentIndex = i
         }
       }
-      
-      // Текущий обрабатываемый узел
-      const currentNode = this.openSet[lowestIndex];
-      
-      // Если достигли конечного узла, восстанавливаем и возвращаем путь
-      if (currentNode === endNode) {
-        return this.reconstructPath(endNode);
+
+      const current = openSet[currentIndex]
+
+      // Если достигли цели
+      if (this.distance(current, end) < 20) {
+        // Восстанавливаем путь
+        const path: Vector2D[] = []
+        let node: PathNode | null = current
+        while (node !== null) {
+          path.push(new Vector2D(node.x, node.y))
+          node = node.parent
+        }
+        return path.reverse()
       }
-      
+
       // Удаляем текущий узел из открытого списка и добавляем в закрытый
-      this.openSet.splice(lowestIndex, 1);
-      this.closedSet.push(currentNode);
-      
-      // Проверяем всех соседей
-      for (const dir of dirs) {
-        const x = currentNode.x + dir.x;
-        const y = currentNode.y + dir.y;
-        
-        // Проверяем, что сосед находится в пределах сетки
-        if (x < 0 || x >= this.gridSizeX || y < 0 || y >= this.gridSizeY) {
-          continue;
+      openSet.splice(currentIndex, 1)
+      closedSet.add(`${Math.floor(current.x)},${Math.floor(current.y)}`)
+
+      // Генерируем соседей
+      const neighbors = this.getNeighbors(current)
+      for (const neighbor of neighbors) {
+        const neighborKey = `${Math.floor(neighbor.x)},${Math.floor(neighbor.y)}`
+        if (closedSet.has(neighborKey)) continue
+
+        const tentativeG = current.g + this.distance(current, neighbor)
+
+        let isNewNode = true
+        for (let i = 0; i < openSet.length; i++) {
+          if (
+            Math.abs(openSet[i].x - neighbor.x) < 1 &&
+            Math.abs(openSet[i].y - neighbor.y) < 1
+          ) {
+            isNewNode = false
+            if (tentativeG < openSet[i].g) {
+              openSet[i].g = tentativeG
+              openSet[i].f = tentativeG + openSet[i].h
+              openSet[i].parent = current
+            }
+            break
+          }
         }
-        
-        const neighbor = this.grid[y][x];
-        
-        // Пропускаем непроходимые узлы и узлы из закрытого списка
-        if (!neighbor.walkable || this.closedSet.includes(neighbor)) {
-          continue;
-        }
-        
-        // Рассчитываем стоимость пути через текущий узел
-        // Диагональное движение стоит больше
-        const isDiagonal = dir.x !== 0 && dir.y !== 0;
-        const moveCost = isDiagonal ? 1.4142 : 1.0; // sqrt(2) для диагоналей
-        const tentativeG = currentNode.g + moveCost;
-        
-        // Если сосед уже в открытом списке и новый путь хуже, пропускаем
-        if (this.openSet.includes(neighbor) && tentativeG >= neighbor.g) {
-          continue;
-        }
-        
-        // Этот путь лучше, обновляем соседа
-        neighbor.parent = currentNode;
-        neighbor.g = tentativeG;
-        neighbor.h = this.heuristic(neighbor, endNode);
-        neighbor.f = neighbor.g + neighbor.h;
-        
-        // Если сосед еще не в открытом списке, добавляем его
-        if (!this.openSet.includes(neighbor)) {
-          this.openSet.push(neighbor);
+
+        if (isNewNode) {
+          neighbor.g = tentativeG
+          neighbor.h = this.heuristic(neighbor, end)
+          neighbor.f = neighbor.g + neighbor.h
+          neighbor.parent = current
+          openSet.push(neighbor)
         }
       }
     }
-    
-    // Путь не найден
-    return null;
+
+    // Если путь не найден
+    return null
   }
-  
-  // Восстановление пути от конечного узла к начальному
-  private reconstructPath(endNode: GridNode): Vector2D[] {
-    const path: Vector2D[] = [];
-    let currentNode: GridNode | null = endNode;
-    
-    while (currentNode) {
-      // Преобразуем сеточные координаты обратно в мировые
-      const x = (currentNode.x + 0.5) * this.cellSize;
-      const y = (currentNode.y + 0.5) * this.cellSize;
-      path.unshift(new Vector2D(x, y));
-      
-      currentNode = currentNode.parent;
-    }
-    
-    return path;
+
+  // Эвристическая функция (манхэттенское расстояние)
+  private heuristic(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    return Math.abs(a.x - b.x) + Math.abs(a.y - b.y)
   }
-  
-  // Проверка существования коридора заданной ширины
-  public validateCorridor(startPos: Vector2D, endPos: Vector2D, minWidth: number): boolean {
-    // Обновляем размер ячейки для учета минимальной ширины коридора
-    const cellSize = Math.min(this.cellSize, minWidth / 2);
-    const pathFinder = new PathFinder(this.gridSizeX * this.cellSize, this.gridSizeY * this.cellSize, cellSize);
-    
-    // Создаем список препятствий с уменьшенными размерами, чтобы учесть минимальную ширину коридора
-    const obstacles: Array<{position: Vector2D, radius: number}> = [];
-    for (let y = 0; y < this.gridSizeY; y++) {
-      for (let x = 0; x < this.gridSizeX; x++) {
-        const node = this.grid[y][x];
-        if (!node.walkable) {
-          const pos = new Vector2D((x + 0.5) * this.cellSize, (y + 0.5) * this.cellSize);
-          obstacles.push({
-            position: pos,
-            radius: minWidth / 2
-          });
+
+  // Евклидово расстояние между двумя точками
+  private distance(a: { x: number; y: number }, b: { x: number; y: number }): number {
+    return Math.sqrt(Math.pow(a.x - b.x, 2) + Math.pow(a.y - b.y, 2))
+  }
+
+  // Получение соседних узлов
+  private getNeighbors(node: PathNode): PathNode[] {
+    const neighbors: PathNode[] = []
+    const directions = [
+      { x: 0, y: -1 }, // Вверх
+      { x: 1, y: 0 },  // Вправо
+      { x: 0, y: 1 },  // Вниз
+      { x: -1, y: 0 }, // Влево
+      { x: 1, y: -1 }, // Вверх-вправо
+      { x: 1, y: 1 },  // Вниз-вправо
+      { x: -1, y: 1 }, // Вниз-влево
+      { x: -1, y: -1 }, // Вверх-влево
+    ]
+
+    const stepSize = this.cellSize / 2
+
+    for (const dir of directions) {
+      const newX = node.x + dir.x * stepSize
+      const newY = node.y + dir.y * stepSize
+
+      // Проверяем, находится ли точка в пределах игрового поля
+      if (newX < 0 || newX >= this.width || newY < 0 || newY >= this.height) {
+        continue
+      }
+
+      // Проверяем, не пересекается ли точка с препятствиями
+      let isValid = true
+      for (const obstacle of this.obstacles) {
+        if (obstacle.isTarget) continue // Пропускаем целевую лунку
+
+        const distance = Math.sqrt(
+          Math.pow(newX - obstacle.position.x, 2) + Math.pow(newY - obstacle.position.y, 2)
+        )
+        if (distance < obstacle.radius + stepSize / 2) {
+          isValid = false
+          break
         }
       }
+
+      if (isValid) {
+        neighbors.push({
+          x: newX,
+          y: newY,
+          g: 0,
+          h: 0,
+          f: 0,
+          parent: null,
+        })
+      }
     }
-    
-    // Обновляем сетку с учетом минимальной ширины коридора
-    pathFinder.updateGrid(obstacles);
-    
-    // Проверяем, существует ли путь
-    const path = pathFinder.findPath(startPos, endPos);
-    return path !== null && path.length > 0;
+
+    return neighbors
   }
-  
-  // Упрощенная проверка проходимости с использованием лучей
-  public rayCast(startPos: Vector2D, endPos: Vector2D, ballRadius: number): boolean {
-    // Преобразуем координаты в индексы сетки
-    const startX = Math.floor(startPos.x / this.cellSize);
-    const startY = Math.floor(startPos.y / this.cellSize);
-    const endX = Math.floor(endPos.x / this.cellSize);
-    const endY = Math.floor(endPos.y / this.cellSize);
-    
-    // Алгоритм Брезенхема для построения линии
-    const dx = Math.abs(endX - startX);
-    const dy = Math.abs(endY - startY);
-    const sx = startX < endX ? 1 : -1;
-    const sy = startY < endY ? 1 : -1;
-    let err = dx - dy;
-    
-    let x = startX;
-    let y = startY;
-    
-    while (x !== endX || y !== endY) {
-      // Проверяем, что ячейка проходима
-      if (y >= 0 && y < this.gridSizeY && x >= 0 && x < this.gridSizeX) {
-        if (!this.grid[y][x].walkable) {
-          return false;
+
+  // Создание безопасного пути, удаляя блокирующие препятствия
+  public createSafePath(start: Vector2D, end: Vector2D, ballRadius: number, obstacles: Obstacle[]): Obstacle[] {
+    // Попытка найти путь с текущими препятствиями
+    this.updateGrid(obstacles)
+    let path = this.findPath(start, end)
+
+    // Если путь уже существует, возвращаем препятствия как есть
+    if (path !== null && path.length > 0) {
+      return obstacles
+    }
+
+    // Создаем копию препятствий для модификации
+    const modifiableObstacles = [...obstacles]
+
+    // Идентифицируем препятствия, которые блокируют путь
+    let removedCount = 0
+    let maxRemovals = Math.min(5, Math.floor(obstacles.length * 0.2)) // Удаляем не более 20% препятствий
+
+    while (path === null && removedCount < maxRemovals) {
+      // Находим препятствие, которое с наибольшей вероятностью блокирует путь
+      const blockerIndex = this.findPotentialBlocker(modifiableObstacles, start, end)
+      if (blockerIndex === -1) break
+
+      // Удаляем блокирующее препятствие
+      modifiableObstacles.splice(blockerIndex, 1)
+      removedCount++
+
+      // Пробуем найти путь без этого препятствия
+      this.updateGrid(modifiableObstacles)
+      path = this.findPath(start, end)
+    }
+
+    // Если всё ещё нет пути, удаляем препятствия вдоль прямой линии от старта к цели
+    if (path === null) {
+      this.clearDirectPath(modifiableObstacles, start, end, ballRadius)
+      this.updateGrid(modifiableObstacles)
+      path = this.findPath(start, end)
+    }
+
+    return modifiableObstacles
+  }
+
+  // Находит препятствие, которое, вероятно, блокирует путь
+  private findPotentialBlocker(obstacles: Obstacle[], start: Vector2D, end: Vector2D): number {
+    // Находим препятствия в прямой линии от старта к цели
+    const directObstacles: { index: number; distance: number }[] = []
+
+    // Рассчитываем вектор направления
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const length = Math.sqrt(dx * dx + dy * dy)
+    const dirX = dx / length
+    const dirY = dy / length
+
+    // Проверяем каждое препятствие
+    for (let i = 0; i < obstacles.length; i++) {
+      const obstacle = obstacles[i]
+      if (obstacle.isTarget) continue // Пропускаем целевую лунку
+
+      // Вычисляем ближайшую точку на линии от препятствия
+      const t = Math.max(0, Math.min(length, dirX * (obstacle.position.x - start.x) + dirY * (obstacle.position.y - start.y)))
+      const nearestX = start.x + dirX * t
+      const nearestY = start.y + dirY * t
+
+      // Расстояние от препятствия до линии
+      const distance = Math.sqrt(
+        Math.pow(nearestX - obstacle.position.x, 2) + Math.pow(nearestY - obstacle.position.y, 2)
+      )
+
+      // Если препятствие близко к линии, добавляем его в список
+      if (distance < obstacle.radius * 1.5) {
+        directObstacles.push({ index: i, distance })
+      }
+    }
+
+    // Если нет препятствий на прямой линии, выбираем ближайшее к цели
+    if (directObstacles.length === 0) {
+      let closestIndex = -1
+      let minDistance = Number.MAX_VALUE
+
+      for (let i = 0; i < obstacles.length; i++) {
+        const obstacle = obstacles[i]
+        if (obstacle.isTarget) continue
+
+        const distanceToEnd = Math.sqrt(
+          Math.pow(obstacle.position.x - end.x, 2) + Math.pow(obstacle.position.y - end.y, 2)
+        )
+
+        if (distanceToEnd < minDistance) {
+          minDistance = distanceToEnd
+          closestIndex = i
         }
-      } else {
-        return false;
       }
-      
-      const e2 = 2 * err;
-      if (e2 > -dy) {
-        err -= dy;
-        x += sx;
-      }
-      if (e2 < dx) {
-        err += dx;
-        y += sy;
-      }
+
+      return closestIndex
     }
-    
-    // Проверяем конечную точку
-    if (endY >= 0 && endY < this.gridSizeY && endX >= 0 && endX < this.gridSizeX) {
-      return this.grid[endY][endX].walkable;
-    }
-    
-    return false;
+
+    // Сортируем по расстоянию от препятствия до линии
+    directObstacles.sort((a, b) => a.distance - b.distance)
+
+    // Возвращаем индекс препятствия с наименьшим расстоянием
+    return directObstacles[0].index
   }
-  
-  // Создание безопасного пути от начала к концу путем удаления препятствий
-  public createSafePath(startPos: Vector2D, endPos: Vector2D, ballRadius: number, obstacles: Array<{position: Vector2D, radius: number, isTarget?: boolean}>): Array<{position: Vector2D, radius: number, isTarget?: boolean}> {
-    // Найдем прямой путь от начала к концу
-    const pathLength = Vector2D.distance(startPos, endPos);
-    const stepCount = Math.ceil(pathLength / (ballRadius * 2));
-    const safeNodes: Vector2D[] = [];
-    
-    // Создаем равномерно распределенные узлы на пути
-    for (let i = 0; i <= stepCount; i++) {
-      const t = i / stepCount;
-      const x = startPos.x + (endPos.x - startPos.x) * t;
-      const y = startPos.y + (endPos.y - startPos.y) * t;
-      safeNodes.push(new Vector2D(x, y));
-    }
-    
-    // Фильтруем препятствия, оставляя только те, которые не блокируют путь
-    const safeObstacles = obstacles.filter(obstacle => {
-      // Целевую лунку всегда сохраняем
-      if (obstacle.isTarget) return true;
-      
-      // Проверяем, не блокирует ли препятствие путь
-      for (const node of safeNodes) {
-        const distance = Vector2D.distance(node, obstacle.position);
-        if (distance < obstacle.radius + ballRadius) {
-          return false; // Препятствие блокирует путь
-        }
+
+  // Очищает прямой путь от старта к цели
+  private clearDirectPath(obstacles: Obstacle[], start: Vector2D, end: Vector2D, ballRadius: number): void {
+    // Рассчитываем вектор направления
+    const dx = end.x - start.x
+    const dy = end.y - start.y
+    const length = Math.sqrt(dx * dx + dy * dy)
+    const dirX = dx / length
+    const dirY = dy / length
+
+    // Ширина коридора
+    const corridorWidth = ballRadius * 4
+
+    // Удаляем препятствия в коридоре
+    for (let i = obstacles.length - 1; i >= 0; i--) {
+      const obstacle = obstacles[i]
+      if (obstacle.isTarget) continue // Пропускаем целевую лунку
+
+      // Вычисляем ближайшую точку на линии от препятствия
+      const t = Math.max(0, Math.min(length, dirX * (obstacle.position.x - start.x) + dirY * (obstacle.position.y - start.y)))
+      const nearestX = start.x + dirX * t
+      const nearestY = start.y + dirY * t
+
+      // Расстояние от препятствия до линии
+      const distance = Math.sqrt(
+        Math.pow(nearestX - obstacle.position.x, 2) + Math.pow(nearestY - obstacle.position.y, 2)
+      )
+
+      // Если препятствие внутри коридора, удаляем его
+      if (distance < corridorWidth + obstacle.radius) {
+        obstacles.splice(i, 1)
       }
-      
-      return true; // Препятствие не блокирует путь
-    });
-    
-    return safeObstacles;
+    }
   }
-  
-  // Визуализация сетки проходимости для отладки
+
+  // Отрисовка сетки для отладки
   public debugDrawGrid(ctx: CanvasRenderingContext2D): void {
-    for (let y = 0; y < this.gridSizeY; y++) {
-      for (let x = 0; x < this.gridSizeX; x++) {
-        const node = this.grid[y][x];
-        
-        ctx.fillStyle = node.walkable ? "rgba(0, 255, 0, 0.2)" : "rgba(255, 0, 0, 0.4)";
-        ctx.fillRect(
-          x * this.cellSize,
-          y * this.cellSize,
-          this.cellSize,
-          this.cellSize
-        );
-        
-        ctx.strokeStyle = "rgba(0, 0, 0, 0.1)";
-        ctx.strokeRect(
-          x * this.cellSize,
-          y * this.cellSize,
-          this.cellSize,
-          this.cellSize
-        );
+    // Отрисовываем сетку
+    for (let row = 0; row < this.grid.length; row++) {
+      for (let col = 0; col < this.grid[0].length; col++) {
+        const x = col * this.cellSize
+        const y = row * this.cellSize
+        const isWalkable = this.grid[row][col]
+
+        ctx.fillStyle = isWalkable ? "rgba(0, 255, 0, 0.1)" : "rgba(255, 0, 0, 0.2)"
+        ctx.fillRect(x, y, this.cellSize, this.cellSize)
       }
     }
   }
