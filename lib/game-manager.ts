@@ -37,11 +37,14 @@ export class GameManager {
   private isEndlessMode: boolean
   private viewportOffset = 0 // Смещение видимой области в бесконечном режиме
 
-  constructor(canvas: HTMLCanvasElement, callbacks: GameCallbacks, startLevel = 1, isEndlessMode = false) {
-    console.log(`GameManager constructor called, endless mode: ${isEndlessMode}`)
+  private debugMode: boolean = false;
+
+  constructor(canvas: HTMLCanvasElement, callbacks: GameCallbacks, startLevel = 1, isEndlessMode = false, debugMode = false) {
+    console.log(`GameManager constructor called, endless mode: ${isEndlessMode}, debug mode: ${debugMode}`)
     this.canvas = canvas
     this.ctx = canvas.getContext("2d")!
     this.isEndlessMode = isEndlessMode
+    this.debugMode = debugMode
 
     if (!this.ctx) {
       throw new Error("Could not get 2D context from canvas")
@@ -460,7 +463,7 @@ export class GameManager {
       }
     } else {
       // В обычном режиме отрисовываем лунки через levelGenerator
-      this.levelGenerator.render(ctx)
+      this.levelGenerator.render(ctx, this.debugMode)
     }
 
     // Draw pivots with glow effect

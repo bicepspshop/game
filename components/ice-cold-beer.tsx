@@ -1,4 +1,8 @@
-"use client"
+      {!gameOver && debugMode && (
+        <div className="absolute top-12 left-2 p-2 glass-btn rounded-md bg-opacity-40 text-[#F000FF] text-sm">
+          Debug Mode
+        </div>
+      )}"use client"
 
 import { useEffect, useRef, useState } from "react"
 import { useKeyboardControls } from "@/hooks/use-keyboard-controls"
@@ -94,6 +98,7 @@ export default function IceColdBeer() {
   const [gameInitialized, setGameInitialized] = useState(false)
   const [restartTrigger, setRestartTrigger] = useState(0)
   const [isEndlessMode, setIsEndlessMode] = useState(false)
+  const [debugMode, setDebugMode] = useState(false)
   // Сохраняем последний уровень при Game Over для использования при перезапуске
   const [lastPlayedLevel, setLastPlayedLevel] = useState(1)
 
@@ -228,6 +233,7 @@ export default function IceColdBeer() {
               },
               lastPlayedLevel, // Используем сохраненный уровень вместо фиксированного 1
               isEndlessMode,
+              debugMode, // Передаем режим отладки
             );
 
             gameRef.current = game;
@@ -273,28 +279,29 @@ export default function IceColdBeer() {
         // Initialize the game
         const canvas = canvasRef.current;
         const game = new GameManager(
-          canvas,
-          {
-            onScoreChange: (newScore) => {
-              console.log(`Score updated: ${newScore}`);
-              setScore(newScore);
-            },
-            onLevelChange: (newLevel) => {
-              console.log(`Level updated: ${newLevel}`);
-              setLevel(newLevel);
-            },
-            onMetersChange: (newMeters) => {
-              console.log(`Meters updated: ${newMeters}`);
-              setMeters(newMeters);
-            },
-            onGameOver: () => {
-              console.log("Game over triggered");
-              setGameOver(true);
-            },
-          },
-          level,
-          isEndlessMode,
-        );
+        canvas,
+        {
+        onScoreChange: (newScore) => {
+        console.log(`Score updated: ${newScore}`);
+        setScore(newScore);
+        },
+        onLevelChange: (newLevel) => {
+        console.log(`Level updated: ${newLevel}`);
+        setLevel(newLevel);
+        },
+        onMetersChange: (newMeters) => {
+        console.log(`Meters updated: ${newMeters}`);
+        setMeters(newMeters);
+        },
+        onGameOver: () => {
+        console.log("Game over triggered");
+        setGameOver(true);
+        },
+        },
+        level,
+        isEndlessMode,
+          debugMode, // Передаем режим отладки
+          );
 
         gameRef.current = game;
         game.start();
@@ -505,12 +512,20 @@ export default function IceColdBeer() {
         
         {/* Добавляем скрытую кнопку для разработчиков, если указан параметр nocache */}
         {noCache && (
-          <button 
-            onClick={clearProgressCache}
-            className="mt-4 text-xs text-gray-500 hover:text-gray-400"
-          >
-            Clear Cache (Dev Mode)
-          </button>
+          <>
+            <button 
+              onClick={clearProgressCache}
+              className="mt-4 text-xs text-gray-500 hover:text-gray-400"
+            >
+              Clear Cache (Dev Mode)
+            </button>
+            <button 
+              onClick={() => setDebugMode(!debugMode)}
+              className="mt-2 text-xs text-gray-500 hover:text-gray-400"
+            >
+              {debugMode ? "Disable Debug Mode" : "Enable Debug Mode"}
+            </button>
+          </>
         )}
       </div>
     );
@@ -579,6 +594,12 @@ export default function IceColdBeer() {
           >
             <HomeIcon size={20} className="text-[#4DEEEA] hover:text-white transition-colors" />
           </button>
+          
+          {debugMode && (
+            <div className="absolute top-12 left-2 p-2 glass-btn rounded-md bg-opacity-40 text-[#F000FF] text-sm">
+              Debug Mode
+            </div>
+          )}
         )}
       </div>
 

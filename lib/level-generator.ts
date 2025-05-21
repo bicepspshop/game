@@ -554,9 +554,9 @@ export class LevelGenerator {
   }
 
   // Рендеринг лунок и безопасного пути (для отладки)
-  public render(ctx: CanvasRenderingContext2D): void {
-    // Рисуем безопасный путь (если включена отладка)
-    if (this.safePathNodes.length > 0 && false) { // Установите в true для отладки
+  public render(ctx: CanvasRenderingContext2D, debugMode: boolean = false): void {
+    // Рисуем безопасный путь в режиме отладки
+    if (this.safePathNodes.length > 0 && debugMode) {
       ctx.strokeStyle = "rgba(0, 255, 0, 0.3)"
       ctx.lineWidth = 2
       ctx.beginPath()
@@ -601,7 +601,7 @@ export class LevelGenerator {
     }
     
     // Отрисовка сетки проходимости для отладки
-    if (this.pathFinder && false) { // Установите в true для отладки
+    if (this.pathFinder && debugMode) {
       this.pathFinder.debugDrawGrid(ctx);
     }
   }
