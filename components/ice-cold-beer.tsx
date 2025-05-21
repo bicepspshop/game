@@ -247,6 +247,7 @@ export default function IceColdBeer() {
   // Initialize game when canvas is available and showMenu is false
   useEffect(() => {
     // Только инициализируем, если не показываем меню, canvas доступен и это не перезапуск
+    console.log('useEffect triggered, showMenu:', showMenu, 'canvas:', !!canvasRef.current, 'initialized:', gameInitialized);
     if (!showMenu && canvasRef.current && !gameInitialized && restartTrigger === 0) {
       console.log("Initializing game for the first time...");
       console.log("Starting at level:", level);
@@ -274,37 +275,87 @@ export default function IceColdBeer() {
       try {
         // Initialize the game
         const canvas = canvasRef.current;
+        console.log('Initializing canvas with dimensions:', canvas.width, 'x', canvas.height);
+        
+        // Убедимся, что canvas имеет правильные размеры
+        if (canvas.width === 0 || canvas.height === 0) {
+          console.log('Fixing canvas dimensions');
+          canvas.width = 400;
+          canvas.height = 711;
+        }
+        
+        // Отображаем сообщение о загрузке
+        const ctx = canvas.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = "#0F1A2A";
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.font = '18px Arial';
+          ctx.fillStyle = '#FFFFFF';
+          ctx.textAlign = 'center';
+          ctx.fillText('Загрузка игры...', canvas.width / 2, canvas.height / 2);
+        } else {
+          console.error('Failed to get 2D context before game initialization');
+        }
+        
+        // Создаем обработчики событий для управления игрой
+        const gameCallbacks = {
+          onScoreChange: (newScore: number) => {
+            console.log(`Score updated: ${newScore}`);
+            setScore(newScore);
+          },
+          onLevelChange: (newLevel: number) => {
+            console.log(`Level updated: ${newLevel}`);
+            setLevel(newLevel);
+          },
+          onMetersChange: (newMeters: number) => {
+            console.log(`Meters updated: ${newMeters}`);
+            setMeters(newMeters);
+          },
+          onGameOver: () => {
+            console.log("Game over triggered");
+            setGameOver(true);
+          }
+        };
+        
+        // Инициализируем менеджер игры
         const game = new GameManager(
-        canvas,
-        {
-        onScoreChange: (newScore) => {
-        console.log(`Score updated: ${newScore}`);
-        setScore(newScore);
-        },
-        onLevelChange: (newLevel) => {
-        console.log(`Level updated: ${newLevel}`);
-        setLevel(newLevel);
-        },
-        onMetersChange: (newMeters) => {
-        console.log(`Meters updated: ${newMeters}`);
-        setMeters(newMeters);
-        },
-        onGameOver: () => {
-        console.log("Game over triggered");
-        setGameOver(true);
-        },
-        },
-        level,
-        isEndlessMode,
-          debugMode, // Передаем режим отладки
-          );
+          canvas,
+          gameCallbacks,
+          level,
+          isEndlessMode,
+          debugMode // Передаем режим отладки
+        );
 
         gameRef.current = game;
-        game.start();
-        setGameInitialized(true);
-        console.log("Game initialized successfully");
+        
+        // Даем небольшую задержку перед запуском
+        setTimeout(() => {
+          // Запускаем игру
+          game.start();
+          setGameInitialized(true);
+          console.log("Game initialized successfully");
+        }, 50);
       } catch (error) {
         console.error("Error initializing game:", error);
+        
+        // Отображаем сообщение об ошибке на canvas
+        if (canvasRef.current) {
+          const ctx = canvasRef.current.getContext('2d');
+          if (ctx) {
+            ctx.fillStyle = "#0F1A2A";
+            ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+            ctx.font = '18px Arial';
+            ctx.fillStyle = '#FF3864';
+            ctx.textAlign = 'center';
+            ctx.fillText('Ошибка запуска игры', canvasRef.current.width / 2, canvasRef.current.height / 2);
+            ctx.fillText('Попробуйте перезагрузить страницу', canvasRef.current.width / 2, canvasRef.current.height / 2 + 30);
+          }
+        }
+        
+        // Возвращаемся в меню через 3 секунды
+        setTimeout(() => {
+          setShowMenu(true);
+        }, 3000);
       }
     }
 
@@ -363,6 +414,25 @@ export default function IceColdBeer() {
       const progress = loadGameProgress();
       progress.currentLevel = startLevel;
       saveGameProgress(progress);
+      
+      // Подготавливаем canvas заранее
+      if (canvasRef.current) {
+        console.log("Preparing canvas before game start...");
+        // Убедимся, что canvas имеет корректные размеры
+        canvasRef.current.width = 400;
+        canvasRef.current.height = 711;
+        
+        // Очищаем canvas
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          ctx.fillStyle = "#0F1A2A";
+          ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+          ctx.font = '18px Arial';
+          ctx.fillStyle = '#FFFFFF';
+          ctx.textAlign = 'center';
+          ctx.fillText('Загрузка игры...', canvasRef.current.width / 2, canvasRef.current.height / 2);
+        }
+      }
       
       // Даем React время обновить состояние, затем показываем игровой экран
       setTimeout(() => {
@@ -443,13 +513,49 @@ export default function IceColdBeer() {
         gameRef.current.destroy();
         gameRef.current = null;
       }
+      
       // Очищаем все состояния, которые могут содержать ссылки на объекты
       setGameInitialized(false);
+      setGameOver(false);
+      
+      // Очищаем canvas, чтобы не оставался серый экран
+      if (canvasRef.current) {
+        const ctx = canvasRef.current.getContext('2d');
+        if (ctx) {
+          // Заполняем темным цветом
+          ctx.fillStyle = "#0F1A2A";
+          ctx.fillRect(0, 0, canvasRef.current.width, canvasRef.current.height);
+        }
+      }
+      
+      // Сбрасываем ввод управления
+      useKeyboardControls.setState({
+        leftInput: 0,
+        rightInput: 0,
+        leftVerticalInput: 0,
+        rightVerticalInput: 0,
+      });
+      
+      useTouchControls.setState({
+        leftTouchInput: 0,
+        rightTouchInput: 0,
+        leftTouchVerticalInput: 0,
+        rightTouchVerticalInput: 0,
+      });
       
       // Может помочь сборщику мусора освободить память
       setTimeout(() => {
         // Отложенное обновление интерфейса
         setShowMenu(true);
+        
+        // Вызываем сборщик мусора, если он доступен
+        if (typeof window !== 'undefined' && window.gc) {
+          try {
+            window.gc();
+          } catch (e) {
+            console.log('GC not available');
+          }
+        }
       }, 100);
     } catch (error) {
       console.error("Error while going back to menu:", error);
@@ -554,7 +660,50 @@ export default function IceColdBeer() {
       </div>
 
       <div className="relative game-container">
-        <canvas ref={canvasRef} width={400} height={711} className="border-0 bg-[#0F1A2A] rounded-2xl shadow-neonglow overflow-hidden" />
+        {/* Устанавливаем фиксированные размеры и стили для обеспечения правильного отображения */}
+        <canvas 
+          ref={canvasRef} 
+          width={400} 
+          height={711} 
+          className="border-0 bg-[#0F1A2A] rounded-2xl shadow-neonglow overflow-hidden" 
+          style={{ width: '400px', height: '711px', display: 'block' }}
+          onClick={(e) => {
+            if (gameRef.current === null || !canvasRef.current) {
+              // Если игра не инициализирована, отображаем отладочную информацию
+              const ctx = canvasRef.current?.getContext('2d');
+              if (ctx) {
+                // Отображаем сообщение о диагностике
+                ctx.fillStyle = 'rgba(0,0,0,0.7)';
+                ctx.fillRect(50, 50, 300, 200);
+                ctx.font = '16px Arial';
+                ctx.fillStyle = '#FFFFFF';
+                ctx.textAlign = 'center';
+                ctx.fillText('Диагностика canvas', 200, 80);
+                
+                // Показываем размеры и состояние
+                const dimensions = {
+                  width: canvasRef.current.width,
+                  height: canvasRef.current.height,
+                  clientWidth: canvasRef.current.clientWidth,
+                  clientHeight: canvasRef.current.clientHeight,
+                  hasContext: !!ctx
+                };
+                
+                ctx.fillText(`Размеры: ${dimensions.width}x${dimensions.height}`, 200, 110);
+                ctx.fillText(`Клиентские: ${dimensions.clientWidth}x${dimensions.clientHeight}`, 200, 140);
+                ctx.fillText('Нажмите для перезапуска игры', 200, 170);
+                
+                // Логируем информацию для отладки
+                console.log('Canvas debug info:', dimensions);
+                
+                // Пытаемся перезапустить игру
+                setTimeout(() => {
+                  handleRestart();
+                }, 500);
+              }
+            }
+          }}
+        />
 
         {gameOver && (
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm rounded-2xl">

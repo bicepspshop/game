@@ -42,14 +42,20 @@ export class GameManager {
 
   constructor(canvas: HTMLCanvasElement, callbacks: GameCallbacks, startLevel = 1, isEndlessMode = false, debugMode = false) {
     console.log(`GameManager constructor called, endless mode: ${isEndlessMode}, debug mode: ${debugMode}`)
+    console.log(`Canvas dimensions: ${canvas.width}x${canvas.height}`)
     this.canvas = canvas
-    this.ctx = canvas.getContext("2d")!
+    
+    // Явно указываем опции для getContext для совместимости с разными браузерами
+    this.ctx = canvas.getContext("2d", { alpha: false, desynchronized: false })!
     this.isEndlessMode = isEndlessMode
     this.debugMode = debugMode
 
     if (!this.ctx) {
+      console.error("Critical error: Could not get 2D context from canvas")
       throw new Error("Could not get 2D context from canvas")
     }
+    
+    console.log("Canvas context successfully initialized")
 
     this.callbacks = callbacks
     this.level = startLevel
@@ -75,19 +81,23 @@ export class GameManager {
       this.rightPivot,
     )
 
-    // Initialize level generator with smaller hole radius
+    // Initialize level generator with smaller hole radius - проверяем дополнительно размеры
+    const safeWidth = canvas.width > 0 ? canvas.width : 400;
+    const safeBoardY = this.boardY > 0 ? this.boardY : canvas.height * 0.8;
+    
+    // Создаем генератор уровней с безопасными значениями
     this.levelGenerator = new LevelGenerator(
-      canvas.width,
-      this.boardY - 20,
-      canvas.width * 0.1,
-      canvas.width * 0.9,
+      safeWidth,
+      safeBoardY - 20,
+      safeWidth * 0.1,
+      safeWidth * 0.9,
       this.holeRadius,
     )
 
     // Initialize endless mode if needed
     if (isEndlessMode) {
-      // Используем класс EndlessMode
-      this.endlessMode = new EndlessMode(canvas.width, canvas.height, this.holeRadius)
+      // Используем класс EndlessMode с безопасными значениями
+      this.endlessMode = new EndlessMode(safeWidth, canvas.height > 0 ? canvas.height : 711, this.holeRadius)
     }
 
     // Generate first level or endless segment
@@ -102,6 +112,34 @@ export class GameManager {
 
   public start(): void {
     console.log("Game starting...")
+    
+    // Проверка готовности canvas и контекста перед запуском
+    if (!this.ctx || !this.canvas || this.canvas.width === 0 || this.canvas.height === 0) {
+      console.error("Cannot start game: Canvas or context is not properly initialized", {
+        canvas: !!this.canvas,
+        context: !!this.ctx,
+        width: this.canvas ? this.canvas.width : 'N/A',
+        height: this.canvas ? this.canvas.height : 'N/A'
+      })
+      
+      // Пытаемся восстановить размеры canvas, если он есть
+      if (this.canvas) {
+        if (this.canvas.width === 0) this.canvas.width = 400
+        if (this.canvas.height === 0) this.canvas.height = 711
+        
+        // Попытка повторно получить контекст
+        if (!this.ctx) {
+          this.ctx = this.canvas.getContext("2d", { alpha: false, desynchronized: false })!
+        }
+      }
+      
+      // Если все еще не удается инициализировать, то возвращаемся
+      if (!this.ctx || !this.canvas || this.canvas.width === 0 || this.canvas.height === 0) {
+        this.callbacks.onGameOver() // Вызываем обработчик завершения игры
+        return
+      }
+    }
+    
     this.lastTimestamp = performance.now()
     this.gameActive = true
     this.gameLoop(this.lastTimestamp)
@@ -216,6 +254,7 @@ export class GameManager {
   }
 
   private gameLoop(timestamp: number): void {
+    // Проверяем активность игры
     if (!this.gameActive) {
       console.log("Game not active, stopping game loop")
       return
@@ -226,13 +265,45 @@ export class GameManager {
       return
     }
 
-    const deltaTime = Math.min((timestamp - this.lastTimestamp) / 1000, 0.05) // Cap at 20 FPS minimum
-    this.lastTimestamp = timestamp
+    try {
+      // Ограничиваем максимальное время кадра
+      const deltaTime = Math.min((timestamp - this.lastTimestamp) / 1000, 0.05) // Cap at 20 FPS minimum
+      this.lastTimestamp = timestamp
 
-    this.update(deltaTime)
-    this.render()
+      // Проверяем canvas и контекст перед обновлением
+      if (!this.ctx || !this.canvas || this.canvas.width === 0 || this.canvas.height === 0) {
+        console.error("Invalid canvas or context in game loop")
+        // Пытаемся восстановить
+        if (this.canvas) {
+          if (this.canvas.width === 0) this.canvas.width = 400
+          if (this.canvas.height === 0) this.canvas.height = 711
+          if (!this.ctx) {
+            this.ctx = this.canvas.getContext("2d", { alpha: false, desynchronized: false })!
+          }
+        }
+        
+        // Если не удалось восстановить, завершаем игру
+        if (!this.ctx || !this.canvas || this.canvas.width === 0 || this.canvas.height === 0) {
+          this.gameActive = false
+          this.callbacks.onGameOver()
+          return
+        }
+      }
 
-    this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this))
+      this.update(deltaTime)
+      this.render()
+      
+      // Продолжаем цикл игры
+      this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this))
+    } catch (error) {
+      console.error("Error in game loop:", error)
+      
+      // В случае ошибки пытаемся продолжить игру 
+      // чтобы ошибка не была критичной
+      if (this.gameActive) {
+        this.animationFrameId = requestAnimationFrame(this.gameLoop.bind(this))
+      }
+    }
   }
 
   private update(deltaTime: number): void {
@@ -314,18 +385,38 @@ export class GameManager {
       if (hitHole !== null) {
         if (hitHole === this.targetHole) {
           // Проверяем, достаточно ли шарик вошел в целевую лунку
-          const targetHole = this.holes[hitHole];
-          const distance = Vector2D.distance(interpolatedPosition, targetHole.position);
-          
-          // Шарик должен войти углубиться в целевую лунку, чтобы пройти уровень
-          if (distance < targetHole.radius - this.ballRadius * 0.7) {
-            // Hit the target hole - добавляем очки в зависимости от уровня и сложности
-            // Увеличиваем награду за сложные уровни
+          if (this.holes && this.holes.length > hitHole) {
+            const targetHole = this.holes[hitHole];
+            const distance = Vector2D.distance(interpolatedPosition, targetHole.position);
+            
+            // Шарик должен войти углубиться в целевую лунку, чтобы пройти уровень
+            if (distance < targetHole.radius - this.ballRadius * 0.7) {
+              // Hit the target hole - добавляем очки в зависимости от уровня и сложности
+              // Увеличиваем награду за сложные уровни
+              const levelPoints = Math.floor(10 * this.level * (1 + this.level * 0.05))
+              this.score += levelPoints
+              this.level += 1
+
+              console.log(`Level completed! Added ${levelPoints} points. New score: ${this.score}`)
+
+              this.callbacks.onScoreChange(this.score)
+              this.callbacks.onLevelChange(this.level)
+
+              // Reset the game state for the new level
+              this.resetGameState()
+
+              // Generate new level
+              this.generateLevel()
+              return
+            }
+          } else {
+            // В случае если нет данных о лунках, просто переходим на следующий уровень
+            // Это страховка от ошибки
             const levelPoints = Math.floor(10 * this.level * (1 + this.level * 0.05))
             this.score += levelPoints
             this.level += 1
 
-            console.log(`Level completed! Added ${levelPoints} points. New score: ${this.score}`)
+            console.log(`Level completed (no data)! Added ${levelPoints} points. New score: ${this.score}`)
 
             this.callbacks.onScoreChange(this.score)
             this.callbacks.onLevelChange(this.level)
@@ -455,6 +546,14 @@ export class GameManager {
     if (!ctx || !canvas) {
       console.error("Canvas or context is null in render method")
       return
+    }
+    
+    // Проверяем, что canvas имеет правильные размеры
+    if (canvas.width === 0 || canvas.height === 0) {
+      console.error(`Invalid canvas dimensions: ${canvas.width}x${canvas.height}`)
+      // Пытаемся восстановить размеры canvas, если они неверны
+      if (canvas.width === 0) canvas.width = 400
+      if (canvas.height === 0) canvas.height = 711
     }
 
     // Clear canvas with a dark gradient background

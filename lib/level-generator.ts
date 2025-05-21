@@ -745,6 +745,15 @@ export class LevelGenerator {
     }
   }
   
+  // Получение информации о всех лунках
+  public getHoles(): { position: Vector2D; radius: number; isTarget: boolean }[] {
+    return this.holes.map(hole => ({
+      position: hole.position,
+      radius: hole.radius,
+      isTarget: hole.isTarget
+    }));
+  }
+  
   // Проверка столкновения шарика с лунками
   public checkBallCollision(ballPosition: Vector2D, ballRadius: number): number | null {
     // Check for collisions with all holes

@@ -99,11 +99,31 @@
     position: relative;
     overflow: hidden;
     border-radius: 16px;
+    min-width: 400px;
+    min-height: 711px;
+    width: 400px;
+    height: 711px;
+  }
+  
+  /* Явное указание размеров canvas для исправления проблемы с серым экраном */
+  canvas.shadow-neonglow {
+    width: 400px !important;
+    height: 711px !important;
+    display: block !important;
   }
 }
 
 body {
   font-family: Arial, Helvetica, sans-serif;
+  overscroll-behavior: none; /* Предотвращаем перетаскивание на мобильных устройствах */
+}
+
+/* Стили для мобильных устройств, чтобы избежать проблем с отображением */
+@media (max-width: 500px) {
+  .game-container {
+    transform: scale(0.95);
+    transform-origin: top center;
+  }
 }
 
 @layer utilities {
