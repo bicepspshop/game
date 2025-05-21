@@ -1,8 +1,4 @@
-      {!gameOver && debugMode && (
-        <div className="absolute top-12 left-2 p-2 glass-btn rounded-md bg-opacity-40 text-[#F000FF] text-sm">
-          Debug Mode
-        </div>
-      )}"use client"
+"use client"
 
 import { useEffect, useRef, useState } from "react"
 import { useKeyboardControls } from "@/hooks/use-keyboard-controls"
@@ -588,18 +584,20 @@ export default function IceColdBeer() {
         )}
 
         {!gameOver && (
-          <button
-            onClick={handleBackToMenu}
-            className="absolute top-2 left-2 p-2 glass-btn rounded-full hover:bg-opacity-90 transition-all"
-          >
-            <HomeIcon size={20} className="text-[#4DEEEA] hover:text-white transition-colors" />
-          </button>
-          
-          {debugMode && (
-            <div className="absolute top-12 left-2 p-2 glass-btn rounded-md bg-opacity-40 text-[#F000FF] text-sm">
-              Debug Mode
-            </div>
-          )}
+          <>
+            <button
+              onClick={handleBackToMenu}
+              className="absolute top-2 left-2 p-2 glass-btn rounded-full hover:bg-opacity-90 transition-all"
+            >
+              <HomeIcon size={20} className="text-[#4DEEEA] hover:text-white transition-colors" />
+            </button>
+            
+            {debugMode && (
+              <div className="absolute top-12 left-2 p-2 glass-btn rounded-md bg-opacity-40 text-[#F000FF] text-sm">
+                Debug Mode
+              </div>
+            )}
+          </>
         )}
       </div>
 
