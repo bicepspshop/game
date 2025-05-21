@@ -1,6 +1,7 @@
 import { Vector2D, type Body, Physics } from "./physics"
 import { LevelGenerator } from "./level-generator"
 import { EndlessGenerator } from "./endless-generator"
+import { EndlessMode } from "./endless-mode" // Импортируем новый класс
 
 type GameCallbacks = {
   onScoreChange: (score: number) => void
@@ -15,6 +16,7 @@ export class GameManager {
   private physics: Physics
   private levelGenerator: LevelGenerator
   private endlessGenerator: EndlessGenerator | null = null
+  private endlessMode: EndlessMode | null = null // Новое свойство для EndlessMode
   private board: Body
   private ball: Body | null = null
   private leftPivot: Vector2D
@@ -83,8 +85,12 @@ export class GameManager {
       this.holeRadius,
     )
 
-    // Initialize endless generator if in endless mode
+    // Initialize endless mode if needed
     if (isEndlessMode) {
+      // Используем новый класс EndlessMode вместо EndlessGenerator
+      this.endlessMode = new EndlessMode(canvas.width, canvas.height, this.holeRadius)
+      
+      // Для совместимости - старый генератор пока сохраняем
       this.endlessGenerator = new EndlessGenerator(
         canvas.width,
         canvas.height,
@@ -147,10 +153,18 @@ export class GameManager {
     // Сбрасываем физику и объекты
     this.resetGameState()
 
-    // Пересоздаем генератор для бесконечного режима
-    if (this.isEndlessMode && this.endlessGenerator) {
-      this.endlessGenerator.reset()
-      this.endlessGenerator.generateInitialSegment()
+    // Сбрасываем бесконечный режим
+    if (this.isEndlessMode) {
+      // Используем новый класс EndlessMode
+      if (this.endlessMode) {
+        this.endlessMode.reset()
+      }
+      
+      // Для совместимости - сбрасываем и старый генератор
+      if (this.endlessGenerator) {
+        this.endlessGenerator.reset()
+        this.endlessGenerator.generateInitialSegment()
+      }
     }
 
     // Генерируем новый уровень
@@ -215,32 +229,7 @@ export class GameManager {
   private update(deltaTime: number): void {
     if (!this.gameActive) return
 
-    // В бесконечном режиме обновляем скорость прокрутки и смещение
-    if (this.isEndlessMode) {
-      // Постепенно увеличиваем скорость прокрутки до максимальной
-      this.scrollSpeed = Math.min(this.scrollSpeed + this.scrollAcceleration * deltaTime, this.maxScrollSpeed)
-
-      // Обновляем смещение видимой области
-      this.viewportOffset += this.scrollSpeed * deltaTime
-
-      // Обновляем метры (1 метр = 10 пикселей)
-      const newMeters = Math.floor(this.viewportOffset / 10)
-      if (newMeters !== this.meters) {
-        this.meters = newMeters
-        this.callbacks.onMetersChange(this.meters)
-
-        // Начисляем очки за высоту (1 метр = 1 очко)
-        this.score = this.meters
-        this.callbacks.onScoreChange(this.score)
-      }
-
-      // Генерируем новые сегменты по мере продвижения вверх
-      if (this.endlessGenerator) {
-        this.endlessGenerator.updateSegments(this.viewportOffset, this.canvas.height)
-      }
-    }
-
-    // Apply board rotation and vertical movement based on inputs
+    // Применяем управление палкой (для обоих режимов)
     this.physics.applyBoardControl(
       this.board,
       this.leftInput,
@@ -250,17 +239,56 @@ export class GameManager {
       deltaTime,
     )
 
-    // Update physics
+    // Обновляем физику (для обоих режимов)
     this.physics.update(deltaTime)
 
-    // Check if ball exists
-    if (this.ball) {
-      // В бесконечном режиме смещаем мяч вместе с экраном
-      if (this.isEndlessMode) {
-        this.ball.position.y += this.scrollSpeed * deltaTime
+    // В бесконечном режиме используем новый класс EndlessMode
+    if (this.isEndlessMode && this.endlessMode) {
+      // Получаем положение доски (среднее значение между опорами)
+      const boardElevation = (this.physics.getLeftPivotY() + this.physics.getRightPivotY()) / 2;
+      
+      // Обновляем бесконечный режим с учетом положения доски
+      this.endlessMode.update(deltaTime, boardElevation);
+      
+      // Получаем текущую высоту с десятичной точностью
+      const newMeters = this.endlessMode.getHeightInMeters();
+      
+      // Обновляем метры, если они изменились хотя бы на 0.1
+      if (Math.floor(newMeters * 10) !== Math.floor(this.meters * 10)) {
+        this.meters = newMeters;
+        this.callbacks.onMetersChange(this.meters);
+        
+        // Обновляем очки (используем целую часть метров)
+        this.score = Math.floor(this.meters);
+        this.callbacks.onScoreChange(this.score);
       }
+      
+      // Для совместимости обновляем и старый генератор
+      if (this.endlessGenerator) {
+        this.endlessGenerator.updateSegments(this.viewportOffset, this.canvas.height)
+      }
+    } else {
+      // В обычном режиме просто увеличиваем скорость прокрутки со временем
+      if (this.isEndlessMode) {
+        this.scrollSpeed = Math.min(this.scrollSpeed + this.scrollAcceleration * deltaTime, this.maxScrollSpeed)
+        this.viewportOffset += this.scrollSpeed * deltaTime
+        
+        // Обновляем метры (1 метр = 10 пикселей)
+        const newMeters = Math.floor(this.viewportOffset / 10)
+        if (newMeters !== this.meters) {
+          this.meters = newMeters
+          this.callbacks.onMetersChange(this.meters)
+          
+          // Начисляем очки за высоту
+          this.score = this.meters
+          this.callbacks.onScoreChange(this.score)
+        }
+      }
+    }
 
-      // Check if ball is completely off the board
+    // Проверяем шарик
+    if (this.ball) {
+      // Проверка выпадения шарика с доски
       if (this.isBallOffBoard()) {
         this.handleGameOver()
         return
@@ -268,6 +296,13 @@ export class GameManager {
 
       // Проверка столкновений в зависимости от режима
       if (this.isEndlessMode) {
+        // Используем новый метод checkCollision для EndlessMode
+        if (this.endlessMode && this.endlessMode.checkCollision(this.ball.position, this.ballRadius)) {
+          this.handleGameOver()
+          return
+        }
+        
+        // Для совместимости проверяем и через старый метод
         this.checkEndlessModeCollisions(deltaTime)
       } else {
         this.checkNormalModeCollisions(deltaTime)
@@ -385,10 +420,17 @@ export class GameManager {
     ctx.fillStyle = "#1a1a2e"
     ctx.fillRect(0, 0, canvas.width, canvas.height)
 
-    // Draw holes or endless segments
-    if (this.isEndlessMode && this.endlessGenerator) {
-      this.endlessGenerator.render(ctx, this.viewportOffset)
+    // Отрисовка в зависимости от режима
+    if (this.isEndlessMode) {
+      // Используем новый класс EndlessMode для отрисовки
+      if (this.endlessMode) {
+        this.endlessMode.render(ctx)
+      } else if (this.endlessGenerator) {
+        // Для совместимости - используем старый генератор, если новый недоступен
+        this.endlessGenerator.render(ctx, this.viewportOffset)
+      }
     } else {
+      // В обычном режиме отрисовываем лунки через levelGenerator
       this.levelGenerator.render(ctx)
     }
 
@@ -417,8 +459,9 @@ export class GameManager {
       ctx.fill()
     }
 
-    // В бесконечном режиме рисуем индикатор высоты
-    if (this.isEndlessMode) {
+    // В бесконечном режиме рисуем индикатор высоты через старый метод
+    // (для совместимости, пока новый класс не заменит его полностью)
+    if (this.isEndlessMode && !this.endlessMode) {
       ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
       ctx.fillRect(canvas.width - 30, 10, 20, canvas.height - 20)
 
@@ -438,8 +481,8 @@ export class GameManager {
 
     // Generate new level or endless segment
     if (this.isEndlessMode) {
-      // В бесконечном режиме не нужно генерировать новый уровень
-      // Сегменты генерируются автоматически в методе update
+      // В бесконечном режиме используем новый класс
+      // Но генерация начальных платформ уже выполнена в конструкторе
     } else {
       // В обычном режиме генерируем новый уровень
       this.targetHole = this.levelGenerator.generateLevel(this.level)

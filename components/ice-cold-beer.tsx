@@ -41,7 +41,8 @@ export default function IceColdBeer() {
 
     const savedEndlessHighScore = localStorage.getItem("endlessHighScore")
     if (savedEndlessHighScore) {
-      setEndlessHighScore(Number.parseInt(savedEndlessHighScore, 10))
+      // Используем parseFloat вместо parseInt для поддержки десятичных значений
+      setEndlessHighScore(Number.parseFloat(savedEndlessHighScore))
     }
 
     const savedUnlockedLevels = localStorage.getItem("unlockedLevels")
@@ -308,6 +309,10 @@ export default function IceColdBeer() {
     )
   }
 
+  // Форматируем метры с одним десятичным знаком
+  const formattedMeters = meters.toFixed(1)
+  const formattedHighScore = endlessHighScore.toFixed(1)
+
   return (
     <div className="flex flex-col items-center">
       <div className="flex justify-between w-full max-w-md mb-2">
@@ -315,9 +320,9 @@ export default function IceColdBeer() {
           <>
             <div className="text-white flex items-center gap-1">
               <ArrowUpIcon size={16} className="text-blue-400" />
-              <span>Высота: {meters}м</span>
+              <span>Высота: {formattedMeters}м</span>
             </div>
-            <div className="text-white">Рекорд: {endlessHighScore}м</div>
+            <div className="text-white">Рекорд: {formattedHighScore}м</div>
           </>
         ) : (
           <>
@@ -334,7 +339,7 @@ export default function IceColdBeer() {
           <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 rounded-lg">
             <h2 className="text-2xl font-bold text-white mb-4">Game Over</h2>
             {isEndlessMode ? (
-              <p className="text-white mb-4">Достигнутая высота: {meters}м</p>
+              <p className="text-white mb-4">Достигнутая высота: {formattedMeters}м</p>
             ) : (
               <p className="text-white mb-4">Final Score: {score}</p>
             )}

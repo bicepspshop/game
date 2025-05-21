@@ -27,6 +27,9 @@ export default function GameMenu({
     )
   }
 
+  // Форматируем метры с одним десятичным знаком
+  const formattedEndlessHighScore = endlessHighScore.toFixed(1)
+
   return (
     <div className="flex flex-col items-center justify-center p-6 bg-gray-900 rounded-lg shadow-lg max-w-md w-full">
       <div className="mb-8 text-center">
@@ -44,7 +47,7 @@ export default function GameMenu({
           {endlessHighScore > 0 && (
             <div className="flex items-center justify-center gap-2 text-blue-400">
               <ArrowUpIcon size={20} />
-              <span>Рекорд высоты: {endlessHighScore}м</span>
+              <span>Рекорд высоты: {formattedEndlessHighScore}м</span>
             </div>
           )}
         </div>
