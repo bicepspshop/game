@@ -1,4 +1,168 @@
- -boardElevation / 100); // Увеличиваем влияние подъема
+import { Vector2D } from "./physics"
+
+// Класс для платформ в бесконечном режиме
+class Platform {
+  constructor(
+    public position: Vector2D,
+    public radius: number,
+    public color: string = "#4b5563"
+  ) {}
+}
+
+export class EndlessMode {
+  private platforms: Platform[] = []
+  private platformPool: Platform[] = []
+  private poolIndex: number = 0
+  private poolSize: number = 200
+  private viewportWidth: number
+  private viewportHeight: number
+  private viewportOffset: number = 0
+  private lastPlatformY: number
+  private minPlatformSpacing: number = 120
+  private maxPlatformSpacing: number = 220
+  private isPaused: boolean = false
+  private baseSpeed: number = 50
+  private speedMultiplier: number = 0
+  private heightInMeters: number = 0
+  private pixelsPerMeter: number = 100
+  private maxVisiblePlatforms: number = 150
+  private segmentHeight: number = 500
+
+  constructor(width: number, height: number, platformRadius: number) {
+    this.viewportWidth = width
+    this.viewportHeight = height
+    this.lastPlatformY = height
+    
+    // Инициализируем пул объектов для оптимизации
+    for (let i = 0; i < this.poolSize; i++) {
+      this.platformPool.push(new Platform(new Vector2D(0, 0), platformRadius));
+    }
+    
+    // Генерируем начальные платформы
+    this.generateInitialPlatforms()
+  }
+  
+  // Получение платформы из пула объектов
+  private getPlatformFromPool(x: number, y: number, radius: number): Platform {
+    // Если достигли конца пула, начинаем сначала
+    if (this.poolIndex >= this.poolSize) {
+      this.poolIndex = 0;
+    }
+    
+    // Получаем существующий объект
+    const platform = this.platformPool[this.poolIndex++];
+    
+    // Обновляем его свойства
+    platform.position.x = x;
+    platform.position.y = y;
+    platform.radius = radius;
+    
+    return platform;
+  }
+
+  // Генерация начальных платформ
+  private generateInitialPlatforms(): void {
+    // Создаем начальные платформы для старта игры
+    // Начинаем с самой нижней части и двигаемся вверх
+    let y = this.viewportHeight
+    
+    // Создаем несколько рядов платформ
+    for (let i = 0; i < 15; i++) {
+      this.spawnPlatformRow(y)
+      y -= this.getRandomSpacing()
+    }
+    
+    // Запоминаем верхнюю платформу
+    this.lastPlatformY = y
+  }
+  
+  // Генерация случайного расстояния между рядами платформ
+  private getRandomSpacing(): number {
+    return this.minPlatformSpacing + Math.random() * (this.maxPlatformSpacing - this.minPlatformSpacing)
+  }
+  
+  // Создание ряда платформ на заданной высоте
+  private spawnPlatformRow(y: number): void {
+    // Количество платформ в ряду
+    const minPlatforms = 3
+    const maxPlatforms = 6
+    
+    // Чем выше, тем больше платформ для усложнения
+    const heightFactor = Math.min(1, this.heightInMeters / 300)
+    const numPlatforms = minPlatforms + Math.floor(heightFactor * (maxPlatforms - minPlatforms))
+    
+    // Добавляем случайность
+    const actualPlatforms = numPlatforms + Math.floor(Math.random() * 3) - 1
+    
+    // Ширина сектора для равномерного распределения
+    const sectorWidth = this.viewportWidth / (actualPlatforms + 1)
+    
+    for (let i = 0; i < actualPlatforms; i++) {
+      // Базовая позиция X - равномерно распределяем по ширине
+      const baseX = (i + 1) * sectorWidth
+      
+      // Добавляем случайное смещение внутри сектора
+      const offsetX = (Math.random() - 0.5) * sectorWidth * 0.7
+      const x = baseX + offsetX
+      
+      // Получаем платформу из пула и настраиваем
+      const platform = this.getPlatformFromPool(x, y, 20 + Math.random() * 5)
+      
+      // Определяем цвет платформы - чем выше, тем сложнее
+      if (this.heightInMeters > 100 && Math.random() < 0.1) {
+        // Небольшой шанс для красных "смертельных" платформ на больших высотах
+        platform.color = "#FF3864"
+      } else {
+        platform.color = "#4b5563"
+      }
+      
+      this.platforms.push(platform)
+    }
+    
+    // Обновляем последнюю высоту
+    if (y < this.lastPlatformY) {
+      this.lastPlatformY = y
+    }
+  }
+  
+  // Создание свободного прохода в указанном сегменте
+  private createPathway(segmentIndex: number): void {
+    // Базовая Y-координата для сегмента
+    const segmentY = segmentIndex * this.segmentHeight
+    
+    // Удаляем некоторые платформы, чтобы создать проход
+    const pathWidth = 80 // Ширина прохода
+    
+    // Выбираем случайную X-координату для прохода
+    const pathX = this.viewportWidth * 0.2 + Math.random() * (this.viewportWidth * 0.6)
+    
+    // Отфильтровываем платформы, которые попадают в проход
+    this.platforms = this.platforms.filter(platform => {
+      // Проверяем, находится ли платформа в текущем сегменте
+      const inSegment = platform.position.y >= segmentY && 
+                       platform.position.y < segmentY + this.segmentHeight
+      
+      // Проверяем, находится ли платформа в зоне прохода
+      const inPathway = Math.abs(platform.position.x - pathX) < pathWidth / 2
+      
+      // Если платформа в сегменте и в проходе, удаляем её
+      return !(inSegment && inPathway)
+    })
+  }
+
+  // Обновление состояния бесконечного режима
+  public update(deltaTime: number, boardElevation: number): void {
+    if (this.isPaused) return
+    
+    // Скорость прокрутки зависит от высоты доски (отрицательные значения - подъем вверх)
+    let scrollSpeed = 0
+    
+    // Если доска движется вверх (отрицательное значение), увеличиваем скорость прокрутки
+    if (boardElevation < 0) {
+      // Плавно увеличиваем множитель скорости
+      this.speedMultiplier += deltaTime * (Math.abs(boardElevation) / 30)
+      // Применяем базовую скорость с множителем и влиянием подъема
+      scrollSpeed = this.baseSpeed * this.speedMultiplier * Math.pow(Math.abs(boardElevation) / 100, 0.7); // Увеличиваем влияние подъема
       scrollSpeed = this.baseSpeed * Math.min(this.speedMultiplier, 3.0); // Позволяем большую максимальную скорость
       
       // Обновляем смещение viewport только если палка двигается вверх
