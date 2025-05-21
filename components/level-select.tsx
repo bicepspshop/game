@@ -19,17 +19,17 @@ export default function LevelSelect({ onStartGame, onBack, unlockedLevels }: Lev
   }
 
   return (
-    <div className="flex flex-col items-center justify-center p-6 bg-gray-900 rounded-lg shadow-lg max-w-md w-full">
+    <div className="flex flex-col items-center justify-center p-6 glass-panel rounded-xl shadow-neonglow max-w-md w-full">
       <div className="w-full flex items-center mb-6">
-        <button onClick={onBack} className="p-2 rounded-full hover:bg-gray-800 transition-colors">
-          <ArrowLeftIcon size={24} className="text-white" />
+        <button onClick={onBack} className="p-2 glass-btn rounded-full hover:bg-opacity-90 transition-all">
+          <ArrowLeftIcon size={24} className="text-[#4DEEEA] hover:text-white transition-colors" />
         </button>
-        <h2 className="text-2xl font-bold text-white flex-1 text-center pr-8">Выбор уровня</h2>
+        <h2 className="text-2xl font-title font-bold text-[#4DEEEA] text-glow-blue flex-1 text-center pr-8">Выбор уровня</h2>
       </div>
 
       {/* Изменяем сетку, чтобы она лучше отображала 50 уровней */}
       {/* Меняем grid-cols-5 на grid-cols-5 sm:grid-cols-10 */}
-      <div className="grid grid-cols-5 sm:grid-cols-10 gap-4 mb-8 w-full max-h-[400px] overflow-y-auto p-2">
+      <div className="grid grid-cols-5 sm:grid-cols-10 gap-4 mb-8 w-full max-h-[400px] overflow-y-auto p-3 glass-panel-controls rounded-lg">
         {Array.from({ length: totalLevels }, (_, i) => i + 1).map((level) => {
           const isUnlocked = unlockedLevels.includes(level)
 
@@ -40,8 +40,8 @@ export default function LevelSelect({ onStartGame, onBack, unlockedLevels }: Lev
               className={`w-14 h-14 rounded-lg flex items-center justify-center text-xl font-bold transition-all
                 ${
                   isUnlocked
-                    ? "bg-blue-600 hover:bg-blue-700 text-white"
-                    : "bg-gray-700 text-gray-500 cursor-not-allowed"
+                    ? "bg-gradient-to-br from-[#4DEEEA] to-[#2E1A47] hover:brightness-110 text-white shadow-neonglow"
+                    : "bg-gray-800 text-gray-500 border border-gray-700 cursor-not-allowed"
                 }`}
               disabled={!isUnlocked}
             >
@@ -49,9 +49,9 @@ export default function LevelSelect({ onStartGame, onBack, unlockedLevels }: Lev
                 {level}
                 <div className="absolute -top-1 -right-1">
                   {isUnlocked ? (
-                    <UnlockIcon size={12} className="text-green-400" />
+                    <UnlockIcon size={12} className="text-[#39FF14]" />
                   ) : (
-                    <LockIcon size={12} className="text-red-400" />
+                    <LockIcon size={12} className="text-[#FF3864]" />
                   )}
                 </div>
               </div>
@@ -62,7 +62,7 @@ export default function LevelSelect({ onStartGame, onBack, unlockedLevels }: Lev
 
       <button
         onClick={() => onStartGame(1)}
-        className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white py-3 px-6 rounded-lg font-bold text-lg transition-colors w-full"
+        className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#4DEEEA] to-[#39FF14] hover:brightness-110 text-white py-3 px-6 rounded-xl font-bold text-lg font-game transition-all play-btn w-full"
       >
         <PlayIcon size={20} />
         Начать игру

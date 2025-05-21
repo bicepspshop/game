@@ -13,6 +13,7 @@ export default function IceColdBeer() {
   const gameRef = useRef<GameManager | null>(null)
   const [score, setScore] = useState(0)
   const [level, setLevel] = useState(1)
+  const [lives, setLives] = useState(3)
   const [meters, setMeters] = useState(0)
   const [gameOver, setGameOver] = useState(false)
   const [showMenu, setShowMenu] = useState(true)
@@ -384,29 +385,32 @@ export default function IceColdBeer() {
 
   return (
     <div className="flex flex-col items-center">
-      <div className="flex justify-between w-full max-w-md mb-2">
+      <div className="flex justify-between w-full max-w-md mb-2 px-4 py-3 glass-panel rounded-xl">
         {isEndlessMode ? (
           <>
-            <div className="text-white flex items-center gap-1">
-              <ArrowUpIcon size={16} className="text-blue-400" />
-              <span>Высота: {formattedMeters}м</span>
+            <div className="text-white flex items-center gap-1 font-game">
+              <ArrowUpIcon size={18} className="text-[#4DEEEA]" />
+              <span className="text-glow-blue">Высота: {formattedMeters}м</span>
             </div>
-            <div className="text-white">Рекорд: {formattedHighScore}м</div>
+            <div className="text-white font-game text-glow-blue">Рекорд: {formattedHighScore}м</div>
           </>
         ) : (
           <>
-            <div className="text-white">Score: {score}</div>
-            <div className="text-white">Level: {level}</div>
+            <div className="flex items-center">
+              <div className="text-white font-game text-glow-blue mr-5">Score: <span className="text-[#F000FF]">{score}</span></div>
+              <div className="text-white font-game text-glow-blue">Lives: {lives}</div>
+            </div>
+            <div className="text-white font-game text-glow-pink">Level: {level}</div>
           </>
         )}
       </div>
 
-      <div className="relative">
-        <canvas ref={canvasRef} width={400} height={600} className="border border-gray-700 bg-gray-800 rounded-lg" />
+      <div className="relative game-container">
+        <canvas ref={canvasRef} width={400} height={711} className="border-0 bg-[#0F1A2A] rounded-2xl shadow-neonglow overflow-hidden" />
 
         {gameOver && (
-          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 rounded-lg">
-            <h2 className="text-2xl font-bold text-white mb-4">Game Over</h2>
+          <div className="absolute inset-0 flex flex-col items-center justify-center bg-black bg-opacity-80 backdrop-blur-sm rounded-2xl">
+            <h2 className="text-3xl font-game font-bold text-[#F000FF] text-glow-pink mb-4">Game Over</h2>
             {isEndlessMode ? (
               <p className="text-white mb-4">Достигнутая высота: {formattedMeters}м</p>
             ) : (
@@ -415,14 +419,14 @@ export default function IceColdBeer() {
             <div className="flex gap-4">
               <button
                 onClick={handleRestart}
-                className="flex items-center gap-2 px-6 py-3 bg-red-600 text-white rounded-lg hover:bg-red-700 transition-colors focus:outline-none focus:ring-2 focus:ring-red-500 focus:ring-opacity-50"
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#FF3864] to-[#F000FF] text-white font-game rounded-xl hover:brightness-110 transition-all focus:outline-none focus:ring-2 focus:ring-[#F000FF] focus:ring-opacity-50 play-btn"
               >
                 <RefreshIcon size={20} />
                 Play Again
               </button>
               <button
                 onClick={handleBackToMenu}
-                className="flex items-center gap-2 px-6 py-3 bg-blue-600 text-white rounded-lg hover:bg-blue-700 transition-colors focus:outline-none focus:ring-2 focus:ring-blue-500 focus:ring-opacity-50"
+                className="flex items-center gap-2 px-6 py-3 bg-gradient-to-r from-[#4DEEEA] to-[#2E1A47] text-white font-game rounded-xl hover:brightness-110 transition-all focus:outline-none focus:ring-2 focus:ring-[#4DEEEA] focus:ring-opacity-50 menu-btn"
               >
                 <HomeIcon size={20} />
                 Main Menu
@@ -434,17 +438,17 @@ export default function IceColdBeer() {
         {!gameOver && (
           <button
             onClick={handleBackToMenu}
-            className="absolute top-2 left-2 p-2 bg-gray-700 bg-opacity-70 rounded-full hover:bg-gray-600 transition-colors"
+            className="absolute top-2 left-2 p-2 glass-btn rounded-full hover:bg-opacity-90 transition-all"
           >
-            <HomeIcon size={20} className="text-white" />
+            <HomeIcon size={20} className="text-[#4DEEEA] hover:text-white transition-colors" />
           </button>
         )}
       </div>
 
       {!gameOver && (
-        <div className="mt-4 flex justify-between w-full max-w-md">
+        <div className="mt-4 flex justify-between w-full max-w-md glass-panel-controls rounded-xl p-4">
           <div className="flex flex-col items-center">
-            <div className="text-white mb-2">Левый джойстик</div>
+            <div className="text-[#4DEEEA] font-game text-sm mb-2 text-glow-blue">Левый джойстик</div>
             <Joystick
               onMove={handleLeftJoystickMove}
               onEnd={handleJoystickEnd}
@@ -455,7 +459,7 @@ export default function IceColdBeer() {
           </div>
 
           <div className="flex flex-col items-center">
-            <div className="text-white mb-2">Правый джойстик</div>
+            <div className="text-[#4DEEEA] font-game text-sm mb-2 text-glow-blue">Правый джойстик</div>
             <Joystick
               onMove={handleRightJoystickMove}
               onEnd={handleJoystickEnd}
@@ -468,7 +472,7 @@ export default function IceColdBeer() {
       )}
 
       {!gameOver && (
-        <div className="mt-6 text-gray-400 text-sm">
+        <div className="mt-6 text-gray-400 text-sm font-game glass-panel-hint p-3 rounded-lg">
           <p>Управление клавиатурой:</p>
           <p>Левая сторона: A/D для наклона, W/S для движения вверх/вниз</p>
           <p>Правая сторона: J/L для наклона, I/K для движения вверх/вниз</p>

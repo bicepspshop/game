@@ -31,21 +31,22 @@ export default function GameMenu({
   const formattedEndlessHighScore = endlessHighScore.toFixed(1)
 
   return (
-    <div className="flex flex-col items-center justify-center p-6 bg-gray-900 rounded-lg shadow-lg max-w-md w-full">
-      <div className="mb-8 text-center">
-        <h1 className="text-4xl font-bold text-white mb-2">Ice Cold Beer</h1>
-        <p className="text-gray-400">Управляй палкой и проведи шарик в зеленую лунку</p>
+    <div className="flex flex-col items-center justify-center p-6 glass-panel rounded-xl shadow-neonglow max-w-md w-full">
+      <div className="neon-title mb-8 text-center">
+        <h1 className="text-4xl font-title text-white mb-2 text-glow-blue">ICE <span className="text-[#F000FF] text-glow-pink">COLD</span> BEER</h1>
+        <div className="w-full h-1 bg-gradient-to-r from-[#4DEEEA] via-[#F000FF] to-[#4DEEEA] rounded-full"></div>
+        <p className="text-gray-300 mt-4 font-game">Управляй палкой и проведи шарик в светящуюся лунку</p>
 
         <div className="mt-4 flex flex-col items-center justify-center gap-2">
           {highScore > 0 && (
-            <div className="flex items-center justify-center gap-2 text-yellow-400">
+            <div className="flex items-center justify-center gap-2 text-[#FFD700] text-glow-gold font-numbers">
               <TrophyIcon size={20} />
               <span>Рекорд: {highScore}</span>
             </div>
           )}
 
           {endlessHighScore > 0 && (
-            <div className="flex items-center justify-center gap-2 text-blue-400">
+            <div className="flex items-center justify-center gap-2 text-[#4DEEEA] text-glow-blue font-numbers">
               <ArrowUpIcon size={20} />
               <span>Рекорд высоты: {formattedEndlessHighScore}м</span>
             </div>
@@ -56,7 +57,7 @@ export default function GameMenu({
       <div className="flex flex-col gap-4 w-full">
         <button
           onClick={() => onStartGame(1)}
-          className="flex items-center justify-center gap-2 bg-green-600 hover:bg-green-700 text-white py-4 px-6 rounded-lg font-bold text-lg transition-colors w-full"
+          className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#4DEEEA] to-[#39FF14] hover:brightness-110 text-white py-4 px-6 rounded-xl font-bold text-lg font-game transition-all play-btn w-full"
         >
           <PlayIcon size={24} />
           Начать игру
@@ -64,7 +65,7 @@ export default function GameMenu({
 
         <button
           onClick={() => setShowLevelSelect(true)}
-          className="flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-700 text-white py-4 px-6 rounded-lg font-bold text-lg transition-colors w-full"
+          className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#2E1A47] to-[#4DEEEA] hover:brightness-110 text-white py-4 px-6 rounded-xl font-bold text-lg font-game transition-all menu-btn w-full"
         >
           <ListIcon size={24} />
           Выбор уровня
@@ -72,7 +73,7 @@ export default function GameMenu({
 
         <button
           onClick={onStartEndlessMode}
-          className="flex items-center justify-center gap-2 bg-purple-600 hover:bg-purple-700 text-white py-4 px-6 rounded-lg font-bold text-lg transition-colors w-full"
+          className="flex items-center justify-center gap-2 bg-gradient-to-r from-[#F000FF] to-[#FF3864] hover:brightness-110 text-white py-4 px-6 rounded-xl font-bold text-lg font-game transition-all play-btn w-full"
         >
           <ArrowUpIcon size={24} />
           Бесконечная игра

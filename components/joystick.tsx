@@ -121,17 +121,19 @@ export default function Joystick({ size, baseColor, stickColor, onMove, onEnd }:
   return (
     <div
       ref={joystickRef}
-      className="relative rounded-full touch-none select-none"
+      className="relative rounded-full touch-none select-none joystick-base"
       style={{
         width: size,
         height: size,
         backgroundColor: baseColor,
+        boxShadow: "0 0 15px rgba(77, 238, 234, 0.3), inset 0 0 8px rgba(77, 238, 234, 0.2)",
+        border: "1px solid rgba(77, 238, 234, 0.5)"
       }}
       onMouseDown={handleMouseDown}
       onTouchStart={handleTouchStart}
     >
       <div
-        className="absolute rounded-full"
+        className="absolute rounded-full joystick-stick"
         style={{
           width: size / 2,
           height: size / 2,
@@ -139,6 +141,12 @@ export default function Joystick({ size, baseColor, stickColor, onMove, onEnd }:
           left: `calc(50% - ${size / 4}px + ${position.x}px)`,
           top: `calc(50% - ${size / 4}px + ${position.y}px)`,
           transition: dragging ? "none" : "all 0.2s ease-out",
+          boxShadow: dragging 
+            ? "0 0 20px rgba(240, 0, 255, 0.6), inset 0 0 10px rgba(240, 0, 255, 0.4)"
+            : "0 0 10px rgba(77, 238, 234, 0.4), inset 0 0 5px rgba(77, 238, 234, 0.3)",
+          border: dragging 
+            ? "1px solid rgba(240, 0, 255, 0.7)"
+            : "1px solid rgba(77, 238, 234, 0.6)"
         }}
       />
     </div>

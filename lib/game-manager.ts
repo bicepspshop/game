@@ -32,8 +32,8 @@ export class GameManager {
   private callbacks: GameCallbacks
   private gameActive = true
   private boardY: number
-  private ballRadius = 10
-  private holeRadius = 18 // Базовый размер лунок
+  private ballRadius = 14 // Увеличиваем размер шарика для лучшей видимости
+  private holeRadius = 20 // Увеличиваем базовый размер лунок
   private isEndlessMode: boolean
   private viewportOffset = 0 // Смещение видимой области в бесконечном режиме
 
@@ -53,10 +53,10 @@ export class GameManager {
     // Initialize physics
     this.physics = new Physics()
 
-    // Set up board dimensions
+    // Set up board dimensions - адаптируем для 9:16 пропорций
     const boardWidth = canvas.width * 0.8
     const boardHeight = 10
-    this.boardY = canvas.height - 80
+    this.boardY = canvas.height - 120
 
     // Set up pivots
     this.leftPivot = new Vector2D(canvas.width / 2 - boardWidth / 2, this.boardY)
@@ -335,8 +335,6 @@ export class GameManager {
     }
   }
 
-
-
   // Check if the ball has completely fallen off the board
   private isBallOffBoard(): boolean {
     if (!this.ball) return false
@@ -368,6 +366,74 @@ export class GameManager {
     return isBallOffX || isBallOffY || this.ball.position.y > this.canvas.height
   }
 
+  // Добавим метод для рендеринга звездного фона
+  private renderBackgroundParticles(ctx: CanvasRenderingContext2D): void {
+    // Создаем псевдослучайные звезды с детерминированным результатом
+    const seed = Math.floor(this.viewportOffset / 100); // Изменяем звезды при прокрутке в бесконечном режиме
+    const pseudoRandom = (x: number, y: number) => {
+      const value = Math.sin(x * 12.9898 + y * 78.233 + seed) * 43758.5453;
+      return value - Math.floor(value);
+    };
+    
+    // Рисуем звезды разных размеров и яркости
+    const width = this.canvas.width;
+    const height = this.canvas.height;
+    
+    // Малые звезды (многочисленные)
+    ctx.fillStyle = "rgba(255, 255, 255, 0.5)";
+    for (let i = 0; i < 100; i++) {
+      const x = Math.floor(pseudoRandom(i, 0) * width);
+      const y = Math.floor(pseudoRandom(0, i) * height);
+      const size = pseudoRandom(i, i) * 1.5;
+      
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Средние звезды (с небольшим свечением)
+    for (let i = 0; i < 20; i++) {
+      const x = Math.floor(pseudoRandom(i + 100, 0) * width);
+      const y = Math.floor(pseudoRandom(0, i + 100) * height);
+      const size = 1 + pseudoRandom(i, i + 50) * 2;
+      
+      ctx.shadowBlur = 5;
+      ctx.shadowColor = "#FFFFFF";
+      ctx.fillStyle = "rgba(255, 255, 255, 0.8)";
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Несколько ярких звезд
+    for (let i = 0; i < 5; i++) {
+      const x = Math.floor(pseudoRandom(i + 200, 10) * width);
+      const y = Math.floor(pseudoRandom(10, i + 200) * height);
+      const size = 2 + pseudoRandom(i + 10, i + 20) * 2;
+      
+      // Случайно выбираем цвет для некоторых ярких звезд
+      const colorIdx = Math.floor(pseudoRandom(i, i + 30) * 3);
+      if (colorIdx === 0) {
+        ctx.shadowColor = "#4DEEEA"; // Неоновый голубой
+        ctx.fillStyle = "#4DEEEA";
+      } else if (colorIdx === 1) {
+        ctx.shadowColor = "#F000FF"; // Неоновый розовый
+        ctx.fillStyle = "#F000FF";
+      } else {
+        ctx.shadowColor = "#FFFFFF"; // Белый
+        ctx.fillStyle = "#FFFFFF";
+      }
+      
+      ctx.shadowBlur = 10;
+      ctx.beginPath();
+      ctx.arc(x, y, size, 0, Math.PI * 2);
+      ctx.fill();
+    }
+    
+    // Сбрасываем shadow для остальных элементов
+    ctx.shadowBlur = 0;
+  }
+
   private render(): void {
     const { ctx, canvas } = this
 
@@ -376,9 +442,15 @@ export class GameManager {
       return
     }
 
-    // Clear canvas
-    ctx.fillStyle = "#1a1a2e"
+    // Clear canvas with a dark gradient background
+    const gradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+    gradient.addColorStop(0, "#0F1A2A"); // Темно-синий вверху
+    gradient.addColorStop(1, "#2E1A47"); // Темно-фиолетовый внизу
+    ctx.fillStyle = gradient;
     ctx.fillRect(0, 0, canvas.width, canvas.height)
+    
+    // Добавляем фоновые частицы (звезды)
+    this.renderBackgroundParticles(ctx);
 
     // Отрисовка в зависимости от режима
     if (this.isEndlessMode) {
@@ -391,45 +463,105 @@ export class GameManager {
       this.levelGenerator.render(ctx)
     }
 
-    // Draw pivots
-    ctx.fillStyle = "#6b7280"
+    // Draw pivots with glow effect
+    ctx.fillStyle = "#4DEEEA" // Неоновый голубой
+    ctx.shadowBlur = 15;
+    ctx.shadowColor = "#4DEEEA";
+    
     ctx.beginPath()
-    ctx.arc(this.leftPivot.x, this.physics.getLeftPivotY() + this.boardY, 5, 0, Math.PI * 2)
+    ctx.arc(this.leftPivot.x, this.physics.getLeftPivotY() + this.boardY, 6, 0, Math.PI * 2)
     ctx.fill()
+    
     ctx.beginPath()
-    ctx.arc(this.rightPivot.x, this.physics.getRightPivotY() + this.boardY, 5, 0, Math.PI * 2)
+    ctx.arc(this.rightPivot.x, this.physics.getRightPivotY() + this.boardY, 6, 0, Math.PI * 2)
     ctx.fill()
+    
+    // Сбрасываем shadow для остальных элементов
+    ctx.shadowBlur = 0;
 
-    // Draw board
+    // Draw board with metallic effect
     ctx.save()
     ctx.translate(this.board.position.x, this.board.position.y)
     ctx.rotate(this.board.rotation)
-    ctx.fillStyle = "#d1d5db"
+    
+    // Create metallic gradient for the board
+    const boardGradient = ctx.createLinearGradient(-this.board.width / 2, 0, this.board.width / 2, 0);
+    boardGradient.addColorStop(0, "#888");
+    boardGradient.addColorStop(0.5, "#DDD");
+    boardGradient.addColorStop(1, "#888");
+    
+    ctx.fillStyle = boardGradient;
     ctx.fillRect(-this.board.width / 2, -this.board.height / 2, this.board.width, this.board.height)
+    
+    // Неоновая подсветка краев доски
+    ctx.strokeStyle = "#4DEEEA";
+    ctx.lineWidth = 2;
+    ctx.shadowBlur = 10;
+    ctx.shadowColor = "#4DEEEA";
+    ctx.strokeRect(-this.board.width / 2, -this.board.height / 2, this.board.width, this.board.height);
+    ctx.shadowBlur = 0;
+    
     ctx.restore()
 
-    // Draw ball
+    // Draw ball with glow effect
     if (this.ball) {
-      ctx.fillStyle = "#ef4444"
+      // Внутренний градиент для шарика
+      const ballGradient = ctx.createRadialGradient(
+        this.ball.position.x - this.ballRadius * 0.3, 
+        this.ball.position.y - this.ballRadius * 0.3, 
+        0,
+        this.ball.position.x,
+        this.ball.position.y,
+        this.ballRadius
+      );
+      
+      ballGradient.addColorStop(0, "#FF8888");
+      ballGradient.addColorStop(1, "#FF3864");
+      
+      ctx.shadowBlur = 15;
+      ctx.shadowColor = "#FF3864";
+      ctx.fillStyle = ballGradient;
       ctx.beginPath()
       ctx.arc(this.ball.position.x, this.ball.position.y, this.ballRadius, 0, Math.PI * 2)
       ctx.fill()
+      
+      // Highlight на шарике
+      ctx.fillStyle = "rgba(255, 255, 255, 0.3)";
+      ctx.beginPath();
+      ctx.arc(this.ball.position.x - this.ballRadius * 0.3, this.ball.position.y - this.ballRadius * 0.3, this.ballRadius * 0.4, 0, Math.PI * 2);
+      ctx.fill();
+      
+      ctx.shadowBlur = 0;
     }
 
-    // В бесконечном режиме рисуем индикатор высоты через старый метод
-    // (для совместимости, пока новый класс не заменит его полностью)
+    // В бесконечном режиме рисуем индикатор высоты
     if (this.isEndlessMode && !this.endlessMode) {
-      ctx.fillStyle = "rgba(0, 0, 0, 0.5)"
-      ctx.fillRect(canvas.width - 30, 10, 20, canvas.height - 20)
+      // Фон индикатора
+      ctx.fillStyle = "rgba(0, 0, 0, 0.3)";
+      ctx.fillRect(canvas.width - 30, 10, 20, canvas.height - 20);
+      
+      // Градиент для индикатора
+      const indicatorGradient = ctx.createLinearGradient(0, 0, 0, canvas.height);
+      indicatorGradient.addColorStop(0, "#F000FF"); // Неоновый розовый вверху
+      indicatorGradient.addColorStop(1, "#4DEEEA"); // Неоновый голубой внизу
+      
+      // Рамка индикатора
+      ctx.strokeStyle = "#4DEEEA";
+      ctx.lineWidth = 1;
+      ctx.strokeRect(canvas.width - 30, 10, 20, canvas.height - 20);
 
       // Рисуем индикатор позиции игрока
-      const playerPositionRatio = Math.min(1, this.ball ? this.ball.position.y / canvas.height : 0)
-      const indicatorY = 10 + playerPositionRatio * (canvas.height - 40)
+      const playerPositionRatio = Math.min(1, this.ball ? this.ball.position.y / canvas.height : 0);
+      const indicatorY = 10 + playerPositionRatio * (canvas.height - 40);
 
-      ctx.fillStyle = "#ef4444"
-      ctx.beginPath()
-      ctx.arc(canvas.width - 20, indicatorY, 8, 0, Math.PI * 2)
-      ctx.fill()
+      // Неоновое свечение для индикатора
+      ctx.shadowBlur = 10;
+      ctx.shadowColor = "#F000FF";
+      ctx.fillStyle = "#F000FF";
+      ctx.beginPath();
+      ctx.arc(canvas.width - 20, indicatorY, 8, 0, Math.PI * 2);
+      ctx.fill();
+      ctx.shadowBlur = 0;
     }
   }
 

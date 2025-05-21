@@ -2,6 +2,106 @@
 @tailwind components;
 @tailwind utilities;
 
+/* Импорт шрифтов */
+@import url('https://fonts.googleapis.com/css2?family=Russo+One&family=Exo+2:wght@400;600;700&family=Chakra+Petch:wght@400;600&display=swap');
+
+:root {
+  --primary-dark: #0F1A2A;
+  --neon-blue: #4DEEEA;
+  --neon-pink: #F000FF;
+  --neon-green: #39FF14;
+  --warning-red: #FF3864;
+  --gold: #FFD700;
+  --purple-dark: #2E1A47;
+}
+
+@layer base {
+  body {
+    @apply bg-[#0F1A2A] text-white font-sans;
+  }
+}
+
+@layer components {
+  .font-game {
+    font-family: 'Exo 2', sans-serif;
+  }
+  
+  .font-title {
+    font-family: 'Russo One', sans-serif;
+  }
+  
+  .font-numbers {
+    font-family: 'Chakra Petch', monospace;
+  }
+  
+  .text-glow-blue {
+    text-shadow: 0 0 8px rgba(77, 238, 234, 0.7);
+  }
+  
+  .text-glow-pink {
+    text-shadow: 0 0 8px rgba(240, 0, 255, 0.7);
+  }
+  
+  .text-glow-gold {
+    text-shadow: 0 0 8px rgba(255, 215, 0, 0.7);
+  }
+  
+  .shadow-neonglow {
+    box-shadow: 0 0 20px rgba(77, 238, 234, 0.3);
+  }
+  
+  .glass-panel {
+    background: rgba(46, 26, 71, 0.2);
+    backdrop-filter: blur(10px);
+    border: 1px solid rgba(77, 238, 234, 0.3);
+    box-shadow: 0 0 15px rgba(77, 238, 234, 0.2);
+  }
+  
+  .glass-panel-controls {
+    background: rgba(15, 26, 42, 0.4);
+    backdrop-filter: blur(8px);
+    border: 1px solid rgba(77, 238, 234, 0.2);
+    box-shadow: 0 0 10px rgba(77, 238, 234, 0.1);
+  }
+  
+  .glass-panel-hint {
+    background: rgba(15, 26, 42, 0.4);
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(77, 238, 234, 0.1);
+  }
+  
+  .glass-btn {
+    background: rgba(77, 238, 234, 0.1);
+    backdrop-filter: blur(5px);
+    border: 1px solid rgba(77, 238, 234, 0.3);
+    box-shadow: 0 0 10px rgba(77, 238, 234, 0.2);
+  }
+  
+  .play-btn:hover {
+    box-shadow: 0 0 15px rgba(240, 0, 255, 0.5);
+    transform: translateY(-2px);
+  }
+  
+  .menu-btn:hover {
+    box-shadow: 0 0 15px rgba(77, 238, 234, 0.5);
+    transform: translateY(-2px);
+  }
+  
+  .joystick-base {
+    background: radial-gradient(circle, rgba(15, 26, 42, 0.9), rgba(15, 26, 42, 1));
+  }
+  
+  .joystick-stick {
+    background: radial-gradient(circle, rgba(77, 238, 234, 0.2), rgba(46, 26, 71, 0.8));
+  }
+  
+  .game-container {
+    position: relative;
+    overflow: hidden;
+    border-radius: 16px;
+  }
+}
+
 body {
   font-family: Arial, Helvetica, sans-serif;
 }
